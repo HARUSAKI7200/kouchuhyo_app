@@ -2,453 +2,19 @@
 
 import 'dart:convert';
 import 'dart:io';
-import 'package:file_picker/file_picker.dart';
-import 'package:kouchuhyo_app/widgets/drawing_canvas.dart';
-import 'package:path_provider/path_provider.dart';
+import 'dart:math';
 import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+
+// ▼▼▼ 自作パッケージのインポート ▼▼▼
+import 'package:kouchuhyo_app/models/kochuhyo_data.dart'; // データモデル
+import 'package:kouchuhyo_app/widgets/order_form_widgets.dart'; // 共通UI部品
+import 'package:kouchuhyo_app/widgets/drawing_canvas.dart';
 import 'package:kouchuhyo_app/screens/drawing_screen.dart';
-import 'dart:math';
 import 'package:kouchuhyo_app/screens/print_preview_screen.dart';
-
-// ★★★【追加】寸法文字列を解析するためのクラス ★★★
-class DimensionParser {
-  final String rawString;
-  String l = '';
-  String w = '';
-  String t = '';
-  String qty = '';
-
-  DimensionParser(this.rawString) {
-    _parse();
-  }
-
-  void _parse() {
-    if (rawString.isEmpty) return;
-
-    String remainingString = rawString;
-
-    final qtyMatch = RegExp(r'[xXх×・]\s*(\d+)\s*本$').firstMatch(remainingString);
-    if (qtyMatch != null) {
-      qty = qtyMatch.group(1)!;
-      remainingString = remainingString.substring(0, qtyMatch.start).trim();
-    } else {
-      final qtyOnlyMatch = RegExp(r'^(\d+)\s*本$').firstMatch(remainingString);
-        if (qtyOnlyMatch != null) {
-            qty = qtyOnlyMatch.group(1)!;
-            remainingString = "";
-        }
-    }
-
-    final lMatch = RegExp(r'[lL]\s*(\d+(?:\.\d+)?)').firstMatch(remainingString);
-    if (lMatch != null) {
-      l = lMatch.group(1)!;
-      remainingString = remainingString.replaceFirst(lMatch.group(0)!, '').trim();
-    }
-
-    final wMatch = RegExp(r'[wW]\s*(\d+(?:\.\d+)?)').firstMatch(remainingString);
-    if (wMatch != null) {
-      w = wMatch.group(1)!;
-      remainingString = remainingString.replaceFirst(wMatch.group(0)!, '').trim();
-    }
-
-    final tMatch = RegExp(r'[tT]\s*(\d+(?:\.\d+)?)').firstMatch(remainingString);
-    if (tMatch != null) {
-      t = tMatch.group(1)!;
-      remainingString = remainingString.replaceFirst(tMatch.group(0)!, '').trim();
-    }
-
-    remainingString = remainingString.replaceAll(RegExp(r'\s*[xXх×]\s*'), ' ').trim();
-    final remainingParts = remainingString.split(RegExp(r'\s+')).where((s) => s.isNotEmpty).toList();
-
-    if (l.isEmpty && remainingParts.isNotEmpty) {
-      l = RegExp(r'^\d+(?:\.\d+)?$').hasMatch(remainingParts[0]) ? remainingParts.removeAt(0) : '';
-    }
-    if (w.isEmpty && remainingParts.isNotEmpty) {
-      w = RegExp(r'^\d+(?:\.\d+)?$').hasMatch(remainingParts[0]) ? remainingParts.removeAt(0) : '';
-    }
-    if (t.isEmpty && remainingParts.isNotEmpty) {
-      t = RegExp(r'^\d+(?:\.\d+)?$').hasMatch(remainingParts[0]) ? remainingParts.removeAt(0) : '';
-    }
-    if (l.isEmpty && w.isEmpty && t.isEmpty && qty.isEmpty) {
-        final tOnlyMatch = RegExp(r'^(\d+(?:\.\d+)?)\s*t$').firstMatch(rawString.toLowerCase());
-        if (tOnlyMatch != null) {
-            t = tOnlyMatch.group(1)!;
-        }
-    }
-  }
-}
-
-
-class KochuhyoData {
-  // 基本情報
-  final String shippingDate, issueDate, serialNumber, kobango, shihomeisaki, hinmei;
-  final String productLength, productWidth, productHeight;
-  final String weight, quantity;
-  final String shippingType, packingForm, formType, material;
-  final String desiccantPeriod, desiccantCoefficientValue, desiccantAmount;
-  // 寸法
-  final String innerLength, innerWidth, innerHeight;
-  final String outerLength, outerWidth, outerHeight, packagingVolume;
-  // 腰下
-  final String skid, h, hFixingMethod, suriGetaType, suriGeta, getaQuantity, floorBoard;
-  final bool isFloorBoardShort;
-  final String skidWidth, skidThickness, skidQuantity;
-  final String hWidth, hThickness;
-  final String suriGetaWidth, suriGetaThickness;
-  final String floorBoardThickness;
-  final String loadBearingMaterialWidth, loadBearingMaterialThickness, loadBearingMaterialQuantity;
-  // 荷重計算
-  final String loadBearingMaterial, allowableLoadUniform, loadCalculationMethod, twoPointLoadDetails, finalAllowableLoad;
-  // 根止め (5行分)
-  final List<String> rootStops;
-  // 側・妻
-  final String sideBoard, kamachiType, upperKamachi, lowerKamachi, pillar;
-  final String beamReceiver, bracePillar;
-  final bool beamReceiverEmbed, bracePillarShortEnds;
-  final String sideBoardThickness;
-  final String upperKamachiWidth, upperKamachiThickness;
-  final String lowerKamachiWidth, lowerKamachiThickness;
-  final String pillarWidth, pillarThickness;
-  final String beamReceiverWidth, beamReceiverThickness;
-  final String bracePillarWidth, bracePillarThickness;
-  // 天井
-  final String ceilingUpperBoard, ceilingLowerBoard;
-  final String ceilingUpperBoardThickness;
-  final String ceilingLowerBoardThickness;
-  // 梱包材
-  final String hari, pressingMaterial, topMaterial;
-  final bool pressingMaterialHasMolding;
-  final String hariWidth, hariThickness, hariQuantity;
-  final String pressingMaterialLength, pressingMaterialWidth, pressingMaterialThickness, pressingMaterialQuantity;
-  final String topMaterialLength, topMaterialWidth, topMaterialThickness, topMaterialQuantity;
-  // 追加部材 (5行分)
-  final List<Map<String, String>> additionalParts;
-  // 図面
-  final Uint8List? koshitaImageBytes;
-  final Uint8List? gawaTsumaImageBytes;
-  final List<Map<String, dynamic>> koshitaDrawingElements;
-  final List<Map<String, dynamic>> gawaTsumaDrawingElements;
-
-  KochuhyoData({
-    required this.shippingDate, required this.issueDate, required this.serialNumber, required this.kobango,
-    required this.shihomeisaki, required this.hinmei,
-    required this.productLength, required this.productWidth, required this.productHeight,
-    required this.weight, required this.quantity,
-    required this.shippingType, required this.packingForm, required this.formType, required this.material,
-    required this.desiccantPeriod, required this.desiccantCoefficientValue, required this.desiccantAmount,
-    required this.innerLength, required this.innerWidth, required this.innerHeight,
-    required this.outerLength, required this.outerWidth, required this.outerHeight, required this.packagingVolume,
-    required this.skid, required this.h, required this.hFixingMethod, required this.suriGetaType,
-    required this.suriGeta, required this.getaQuantity, required this.floorBoard,
-    required this.isFloorBoardShort,
-    required this.skidWidth, required this.skidThickness, required this.skidQuantity,
-    required this.hWidth, required this.hThickness,
-    required this.suriGetaWidth, required this.suriGetaThickness,
-    required this.floorBoardThickness,
-    required this.loadBearingMaterialWidth, required this.loadBearingMaterialThickness, required this.loadBearingMaterialQuantity,
-    required this.loadBearingMaterial, required this.allowableLoadUniform, required this.loadCalculationMethod,
-    required this.twoPointLoadDetails, required this.finalAllowableLoad, required this.rootStops,
-    required this.sideBoard, required this.kamachiType, required this.upperKamachi, required this.lowerKamachi,
-    required this.pillar, required this.beamReceiver, required this.bracePillar,
-    required this.sideBoardThickness,
-    required this.upperKamachiWidth, required this.upperKamachiThickness,
-    required this.lowerKamachiWidth, required this.lowerKamachiThickness,
-    required this.pillarWidth, required this.pillarThickness,
-    required this.beamReceiverWidth, required this.beamReceiverThickness,
-    required this.bracePillarWidth, required this.bracePillarThickness,
-    required this.beamReceiverEmbed, required this.bracePillarShortEnds,
-    required this.ceilingUpperBoard, required this.ceilingLowerBoard,
-    required this.ceilingUpperBoardThickness, required this.ceilingLowerBoardThickness,
-    required this.hari, required this.pressingMaterial, required this.topMaterial,
-    required this.hariWidth, required this.hariThickness, required this.hariQuantity,
-    required this.pressingMaterialLength, required this.pressingMaterialWidth, required this.pressingMaterialThickness, required this.pressingMaterialQuantity,
-    required this.topMaterialLength, required this.topMaterialWidth, required this.topMaterialThickness, required this.topMaterialQuantity,
-    required this.pressingMaterialHasMolding, required this.additionalParts,
-    this.koshitaImageBytes, this.gawaTsumaImageBytes,
-    required this.koshitaDrawingElements,
-    required this.gawaTsumaDrawingElements,
-  });
-
-  Map<String, dynamic> toJson() {
-    final koshitaImageBase64 = koshitaImageBytes != null ? base64Encode(koshitaImageBytes!) : null;
-    final gawaTsumaImageBase64 = gawaTsumaImageBytes != null ? base64Encode(gawaTsumaImageBytes!) : null;
-
-    return {
-      'shippingDate': shippingDate,
-      'issueDate': issueDate,
-      'serialNumber': serialNumber,
-      'kobango': kobango,
-      'shihomeisaki': shihomeisaki,
-      'hinmei': hinmei,
-      'productLength': productLength,
-      'productWidth': productWidth,
-      'productHeight': productHeight,
-      'weight': weight,
-      'quantity': quantity,
-      'shippingType': shippingType,
-      'packingForm': packingForm,
-      'formType': formType,
-      'material': material,
-      'desiccantPeriod': desiccantPeriod,
-      'desiccantCoefficientValue': desiccantCoefficientValue,
-      'desiccantAmount': desiccantAmount,
-      'innerLength': innerLength,
-      'innerWidth': innerWidth,
-      'innerHeight': innerHeight,
-      'outerLength': outerLength,
-      'outerWidth': outerWidth,
-      'outerHeight': outerHeight,
-      'packagingVolume': packagingVolume,
-      'skid': skid,
-      'h': h,
-      'hFixingMethod': hFixingMethod,
-      'suriGetaType': suriGetaType,
-      'suriGeta': suriGeta,
-      'getaQuantity': getaQuantity,
-      'floorBoard': floorBoard,
-      'isFloorBoardShort': isFloorBoardShort,
-      'loadBearingMaterial': loadBearingMaterial,
-      'allowableLoadUniform': allowableLoadUniform,
-      'loadCalculationMethod': loadCalculationMethod,
-      'twoPointLoadDetails': twoPointLoadDetails,
-      'finalAllowableLoad': finalAllowableLoad,
-      'rootStops': rootStops,
-      'sideBoard': sideBoard,
-      'kamachiType': kamachiType,
-      'upperKamachi': upperKamachi,
-      'lowerKamachi': lowerKamachi,
-      'pillar': pillar,
-      'beamReceiver': beamReceiver,
-      'bracePillar': bracePillar,
-      'beamReceiverEmbed': beamReceiverEmbed,
-      'bracePillarShortEnds': bracePillarShortEnds,
-      'ceilingUpperBoard': ceilingUpperBoard,
-      'ceilingLowerBoard': ceilingLowerBoard,
-      'hari': hari,
-      'pressingMaterial': pressingMaterial,
-      'topMaterial': topMaterial,
-      'pressingMaterialHasMolding': pressingMaterialHasMolding,
-      'additionalParts': additionalParts,
-      'koshitaImageBytes': koshitaImageBase64,
-      'gawaTsumaImageBytes': gawaTsumaImageBase64,
-      'skidWidth': skidWidth,
-      'skidThickness': skidThickness,
-      'skidQuantity': skidQuantity,
-      'hWidth': hWidth,
-      'hThickness': hThickness,
-      'suriGetaWidth': suriGetaWidth,
-      'suriGetaThickness': suriGetaThickness,
-      'floorBoardThickness': floorBoardThickness,
-      'loadBearingMaterialWidth': loadBearingMaterialWidth,
-      'loadBearingMaterialThickness': loadBearingMaterialThickness,
-      'loadBearingMaterialQuantity': loadBearingMaterialQuantity,
-      'sideBoardThickness': sideBoardThickness,
-      'upperKamachiWidth': upperKamachiWidth,
-      'upperKamachiThickness': upperKamachiThickness,
-      'lowerKamachiWidth': lowerKamachiWidth,
-      'lowerKamachiThickness': lowerKamachiThickness,
-      'pillarWidth': pillarWidth,
-      'pillarThickness': pillarThickness,
-      'beamReceiverWidth': beamReceiverWidth,
-      'beamReceiverThickness': beamReceiverThickness,
-      'bracePillarWidth': bracePillarWidth,
-      'bracePillarThickness': bracePillarThickness,
-      'ceilingUpperBoardThickness': ceilingUpperBoardThickness,
-      'ceilingLowerBoardThickness': ceilingLowerBoardThickness,
-      'hariWidth': hariWidth,
-      'hariThickness': hariThickness,
-      'hariQuantity': hariQuantity,
-      'pressingMaterialLength': pressingMaterialLength,
-      'pressingMaterialWidth': pressingMaterialWidth,
-      'pressingMaterialThickness': pressingMaterialThickness,
-      'pressingMaterialQuantity': pressingMaterialQuantity,
-      'topMaterialLength': topMaterialLength,
-      'topMaterialWidth': topMaterialWidth,
-      'topMaterialThickness': topMaterialThickness,
-      'topMaterialQuantity': topMaterialQuantity,
-      'koshitaDrawingElements': koshitaDrawingElements,
-      'gawaTsumaDrawingElements': gawaTsumaDrawingElements,
-    };
-  }
-
-  factory KochuhyoData.fromJson(Map<String, dynamic> json) {
-    return KochuhyoData(
-      shippingDate: json['shippingDate'] ?? '',
-      issueDate: json['issueDate'] ?? '',
-      serialNumber: json['serialNumber'] ?? '',
-      kobango: json['kobango'] ?? '',
-      shihomeisaki: json['shihomeisaki'] ?? '',
-      hinmei: json['hinmei'] ?? '',
-      productLength: json['productLength'] ?? '',
-      productWidth: json['productWidth'] ?? '',
-      productHeight: json['productHeight'] ?? '',
-      weight: json['weight'] ?? '',
-      quantity: json['quantity'] ?? '',
-      shippingType: json['shippingType'] ?? '',
-      packingForm: json['packingForm'] ?? '',
-      formType: json['formType'] ?? '',
-      material: json['material'] ?? '',
-      desiccantPeriod: json['desiccantPeriod'] ?? '',
-      desiccantCoefficientValue: json['desiccantCoefficientValue'] ?? '',
-      desiccantAmount: json['desiccantAmount'] ?? '',
-      innerLength: json['innerLength'] ?? '',
-      innerWidth: json['innerWidth'] ?? '',
-      innerHeight: json['innerHeight'] ?? '',
-      outerLength: json['outerLength'] ?? '',
-      outerWidth: json['outerWidth'] ?? '',
-      outerHeight: json['outerHeight'] ?? '',
-      packagingVolume: json['packagingVolume'] ?? '',
-      skid: json['skid'] ?? '',
-      h: json['h'] ?? '',
-      hFixingMethod: json['hFixingMethod'] ?? '',
-      suriGetaType: json['suriGetaType'] ?? '',
-      suriGeta: json['suriGeta'] ?? '',
-      getaQuantity: json['getaQuantity'] ?? '',
-      floorBoard: json['floorBoard'] ?? '',
-      isFloorBoardShort: json['isFloorBoardShort'] ?? false,
-      loadBearingMaterial: json['loadBearingMaterial'] ?? '',
-      allowableLoadUniform: json['allowableLoadUniform'] ?? '',
-      loadCalculationMethod: json['loadCalculationMethod'] ?? '',
-      twoPointLoadDetails: json['twoPointLoadDetails'] ?? '',
-      finalAllowableLoad: json['finalAllowableLoad'] ?? '',
-      rootStops: List<String>.from(json['rootStops'] ?? []),
-      sideBoard: json['sideBoard'] ?? '',
-      kamachiType: json['kamachiType'] ?? '',
-      upperKamachi: json['upperKamachi'] ?? '',
-      lowerKamachi: json['lowerKamachi'] ?? '',
-      pillar: json['pillar'] ?? '',
-      beamReceiver: json['beamReceiver'] ?? '',
-      bracePillar: json['bracePillar'] ?? '',
-      beamReceiverEmbed: json['beamReceiverEmbed'] ?? false,
-      bracePillarShortEnds: json['bracePillarShortEnds'] ?? false,
-      ceilingUpperBoard: json['ceilingUpperBoard'] ?? '',
-      ceilingLowerBoard: json['ceilingLowerBoard'] ?? '',
-      hari: json['hari'] ?? '',
-      pressingMaterial: json['pressingMaterial'] ?? '',
-      topMaterial: json['topMaterial'] ?? '',
-      pressingMaterialHasMolding: json['pressingMaterialHasMolding'] ?? false,
-      additionalParts: (json['additionalParts'] as List<dynamic>?)
-          ?.map((e) => Map<String, String>.from(e as Map))
-          .toList() ?? [],
-      koshitaImageBytes: json['koshitaImageBytes'] != null ? base64Decode(json['koshitaImageBytes']) : null,
-      gawaTsumaImageBytes: json['gawaTsumaImageBytes'] != null ? base64Decode(json['gawaTsumaImageBytes']) : null,
-      skidWidth: json['skidWidth'] ?? '',
-      skidThickness: json['skidThickness'] ?? '',
-      skidQuantity: json['skidQuantity'] ?? '',
-      hWidth: json['hWidth'] ?? '',
-      hThickness: json['hThickness'] ?? '',
-      suriGetaWidth: json['suriGetaWidth'] ?? '',
-      suriGetaThickness: json['suriGetaThickness'] ?? '',
-      floorBoardThickness: json['floorBoardThickness'] ?? '',
-      loadBearingMaterialWidth: json['loadBearingMaterialWidth'] ?? '',
-      loadBearingMaterialThickness: json['loadBearingMaterialThickness'] ?? '',
-      loadBearingMaterialQuantity: json['loadBearingMaterialQuantity'] ?? '',
-      sideBoardThickness: json['sideBoardThickness'] ?? '',
-      upperKamachiWidth: json['upperKamachiWidth'] ?? '',
-      upperKamachiThickness: json['upperKamachiThickness'] ?? '',
-      lowerKamachiWidth: json['lowerKamachiWidth'] ?? '',
-      lowerKamachiThickness: json['lowerKamachiThickness'] ?? '',
-      pillarWidth: json['pillarWidth'] ?? '',
-      pillarThickness: json['pillarThickness'] ?? '',
-      beamReceiverWidth: json['beamReceiverWidth'] ?? '',
-      beamReceiverThickness: json['beamReceiverThickness'] ?? '',
-      bracePillarWidth: json['bracePillarWidth'] ?? '',
-      bracePillarThickness: json['bracePillarThickness'] ?? '',
-      ceilingUpperBoardThickness: json['ceilingUpperBoardThickness'] ?? '',
-      ceilingLowerBoardThickness: json['ceilingLowerBoardThickness'] ?? '',
-      hariWidth: json['hariWidth'] ?? '',
-      hariThickness: json['hariThickness'] ?? '',
-      hariQuantity: json['hariQuantity'] ?? '',
-      pressingMaterialLength: json['pressingMaterialLength'] ?? '',
-      pressingMaterialWidth: json['pressingMaterialWidth'] ?? '',
-      pressingMaterialThickness: json['pressingMaterialThickness'] ?? '',
-      pressingMaterialQuantity: json['pressingMaterialQuantity'] ?? '',
-      topMaterialLength: json['topMaterialLength'] ?? '',
-      topMaterialWidth: json['topMaterialWidth'] ?? '',
-      topMaterialThickness: json['topMaterialThickness'] ?? '',
-      topMaterialQuantity: json['topMaterialQuantity'] ?? '',
-      koshitaDrawingElements: (json['koshitaDrawingElements'] as List<dynamic>?)
-          ?.map((e) => Map<String, dynamic>.from(e as Map))
-          .toList() ?? [],
-      gawaTsumaDrawingElements: (json['gawaTsumaDrawingElements'] as List<dynamic>?)
-          ?.map((e) => Map<String, dynamic>.from(e as Map))
-          .toList() ?? [],
-    );
-  }
-}
-
-class _CollapsibleSection extends StatefulWidget {
-  final String title;
-  final Widget child;
-  final bool initiallyExpanded;
-
-  const _CollapsibleSection({
-    required this.title,
-    required this.child,
-    this.initiallyExpanded = true,
-  });
-
-  @override
-  __CollapsibleSectionState createState() => __CollapsibleSectionState();
-}
-
-class __CollapsibleSectionState extends State<_CollapsibleSection> {
-  late bool _isExpanded;
-
-  @override
-  void initState() {
-    super.initState();
-    _isExpanded = widget.initiallyExpanded;
-  }
-
-  void _toggleExpanded() {
-    setState(() {
-      _isExpanded = !_isExpanded;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        InkWell(
-          onTap: _toggleExpanded,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 8.0, top: 16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      _isExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
-                      color: Colors.blueAccent,
-                      size: 28,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '--- ${widget.title} ---',
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueAccent),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (_isExpanded)
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.only(left: 16.0, top: 8.0),
-            child: widget.child,
-          ),
-      ],
-    );
-  }
-}
 
 class OrderFormScreen extends StatefulWidget {
   final KochuhyoData? templateData;
@@ -465,21 +31,26 @@ class OrderFormScreen extends StatefulWidget {
 }
 
 class _OrderFormScreenState extends State<OrderFormScreen> {
+  // ▼▼▼ 状態管理 (Controllers & FocusNodes) ▼▼▼
   final Map<String, FocusNode> _focusNodes = {};
   late List<String> _orderedFocusNodeKeys;
+  
   final TextEditingController _shippingDateController = TextEditingController();
   final TextEditingController _issueDateController = TextEditingController();
   final TextEditingController _serialNumberController = TextEditingController(text: 'A-');
   final TextEditingController _kobangoController = TextEditingController();
   final TextEditingController _shihomeisakiController = TextEditingController();
   final TextEditingController _hinmeiController = TextEditingController();
+  
   final TextEditingController _productLengthController = TextEditingController();
   final TextEditingController _productWidthController = TextEditingController();
   final TextEditingController _productHeightController = TextEditingController();
   final TextEditingController _weightController = TextEditingController();
   final TextEditingController _quantityController = TextEditingController();
+  
   String? _selectedMaterial;
   final List<String> _materialOptions = const ['LVL', '熱処理'];
+  
   final TextEditingController _desiccantPeriodController = TextEditingController();
   final TextEditingController _desiccantResultDisplayController = TextEditingController();
   double? _selectedDesiccantCoefficient;
@@ -487,11 +58,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
     '0.12 (地域Aなど)': 0.12, '0.048 (地域Bなど)': 0.048,
     '0.026 (地域Cなど)': 0.026, '0.013 (地域Dなど)': 0.013,
   };
-  final FocusNode _desiccantCoefficientFocusNode = FocusNode();
-  final FocusNode _materialFocusNode = FocusNode();
-  final FocusNode _shippingTypeFocusNode = FocusNode();
-  final FocusNode _formTypeFocusNode = FocusNode();
-  final FocusNode _packingFormFocusNode = FocusNode();
+  
   final TextEditingController _innerLengthController = TextEditingController();
   final TextEditingController _innerWidthController = TextEditingController();
   final TextEditingController _innerHeightController = TextEditingController();
@@ -499,33 +66,34 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
   final TextEditingController _outerWidthController = TextEditingController();
   final TextEditingController _outerHeightController = TextEditingController();
   final TextEditingController _packagingVolumeDisplayController = TextEditingController();
+  
   String? _selectedShippingType;
   String? _selectedPackingForm;
   String? _selectedFormType;
   final List<String> _formTypeOptions = const [
     'わく組（合板）', '外さんわく組（合板）', '普通木箱（合板）', '腰下付（合板）', '腰下',
   ];
+  
   final TextEditingController _skidWidthController = TextEditingController();
   final TextEditingController _skidThicknessController = TextEditingController();
   final TextEditingController _skidQuantityController = TextEditingController();
   final TextEditingController _hWidthController = TextEditingController();
   final TextEditingController _hThicknessController = TextEditingController();
   String? _hFixingMethod;
-   final FocusNode _hFixingMethodFocusNode = FocusNode();
   String? _selectedSuriGetaType;
-   final FocusNode _suriGetaTypeFocusNode = FocusNode();
   final TextEditingController _suriGetaWidthController = TextEditingController();
   final TextEditingController _suriGetaThicknessController = TextEditingController();
   final TextEditingController _getaQuantityController = TextEditingController();
   final TextEditingController _floorBoardThicknessController = TextEditingController();
   bool _isJitaMijikame = false;
+  
   final TextEditingController _loadBearingMaterialWidthController = TextEditingController();
   final TextEditingController _loadBearingMaterialThicknessController = TextEditingController();
   final TextEditingController _loadBearingMaterialQuantityController = TextEditingController();
   String? _loadCalculationMethod;
-   final FocusNode _loadCalculationMethodFocusNode = FocusNode();
   double _wUniform = 0.0;
   final TextEditingController _allowableLoadDisplayController = TextEditingController();
+  
   final TextEditingController _l_A_Controller = TextEditingController();
   final TextEditingController _l0Controller = TextEditingController();
   final TextEditingController _l_B_Controller = TextEditingController();
@@ -533,13 +101,14 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
   final TextEditingController _l2Controller = TextEditingController();
   final TextEditingController _multiplierDisplayController = TextEditingController();
   final TextEditingController _allowableLoadFinalDisplayController = TextEditingController();
+  
   final List<TextEditingController> _rootStopLengthControllers = List.generate(5, (_) => TextEditingController());
   final List<TextEditingController> _rootStopWidthControllers = List.generate(5, (_) => TextEditingController());
   final List<TextEditingController> _rootStopThicknessControllers = List.generate(5, (_) => TextEditingController());
   final List<TextEditingController> _rootStopQuantityControllers = List.generate(5, (_) => TextEditingController());
+  
   final TextEditingController _sideBoardThicknessController = TextEditingController();
   String? _selectedKamachiType;
-  final FocusNode _kamachiTypeFocusNode = FocusNode();
   final TextEditingController _upperKamachiWidthController = TextEditingController();
   final TextEditingController _upperKamachiThicknessController = TextEditingController();
   final TextEditingController _lowerKamachiWidthController = TextEditingController();
@@ -552,8 +121,10 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
   final TextEditingController _bracePillarWidthController = TextEditingController();
   final TextEditingController _bracePillarThicknessController = TextEditingController();
   bool _bracePillarShortEnds = false;
+  
   final TextEditingController _ceilingUpperBoardThicknessController = TextEditingController();
   final TextEditingController _ceilingLowerBoardThicknessController = TextEditingController();
+  
   final TextEditingController _hariWidthController = TextEditingController();
   final TextEditingController _hariThicknessController = TextEditingController();
   final TextEditingController _hariQuantityController = TextEditingController();
@@ -566,11 +137,14 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
   final TextEditingController _topMaterialWidthController = TextEditingController();
   final TextEditingController _topMaterialThicknessController = TextEditingController();
   final TextEditingController _topMaterialQuantityController = TextEditingController();
+  
   final List<TextEditingController> _additionalPartNameControllers = List.generate(5, (_) => TextEditingController());
   final List<TextEditingController> _additionalPartLengthControllers = List.generate(5, (_) => TextEditingController());
   final List<TextEditingController> _additionalPartWidthControllers = List.generate(5, (_) => TextEditingController());
   final List<TextEditingController> _additionalPartThicknessControllers = List.generate(5, (_) => TextEditingController());
   final List<TextEditingController> _additionalPartQuantityControllers = List.generate(5, (_) => TextEditingController());
+  
+  // 選択肢オプション
   String? _selectedSkidSize;
   final List<String> _skidSizeOptions = const ['85×40', '85×55', '70×70', '85×85', '100×100', '105×105'];
   String? _selectedHSize;
@@ -585,6 +159,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
   final List<String> _bracePillarSizeOptions = const ['85×25', '85×40'];
   String? _selectedHariSize;
   final List<String> _hariSizeOptions = const ['85×40', '85×55', '70×70', '85×85', '100×100', '105×105'];
+  
   List<DrawingElement> _koshitaDrawingElements = [];
   List<DrawingElement> _gawaTsumaDrawingElements = [];
   Uint8List? _koshitaImageBytes;
@@ -607,19 +182,13 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
     _initFocusNodes();
 
     _outerLengthController.addListener(() {
-      if (_focusNodes['outerLength']!.hasFocus) {
-        _isOuterLengthManuallyEdited = true;
-      }
+      if (_focusNodes['outerLength']!.hasFocus) _isOuterLengthManuallyEdited = true;
     });
     _outerWidthController.addListener(() {
-      if (_focusNodes['outerWidth']!.hasFocus) {
-        _isOuterWidthManuallyEdited = true;
-      }
+      if (_focusNodes['outerWidth']!.hasFocus) _isOuterWidthManuallyEdited = true;
     });
     _outerHeightController.addListener(() {
-      if (_focusNodes['outerHeight']!.hasFocus) {
-        _isOuterHeightManuallyEdited = true;
-      }
+      if (_focusNodes['outerHeight']!.hasFocus) _isOuterHeightManuallyEdited = true;
     });
 
     final calculationListeners = [
@@ -635,168 +204,149 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
     for (var controller in calculationListeners) {
       controller.addListener(_triggerAllCalculations);
     }
-    _l_A_Controller.addListener(() {
-      if (_l_A_Controller.text.isNotEmpty) _clearTwoPointInputs(scenario: 'B');
-      _calculateTwoPointLoad();
-    });
-    _l0Controller.addListener(() {
-      if (_l0Controller.text.isNotEmpty) _clearTwoPointInputs(scenario: 'B');
-      _calculateTwoPointLoad();
-    });
-    _l_B_Controller.addListener(() {
-      if (_l_B_Controller.text.isNotEmpty) _clearTwoPointInputs(scenario: 'A');
-      _calculateTwoPointLoad();
-    });
-    _l1Controller.addListener(() {
-      if (_l1Controller.text.isNotEmpty) _clearTwoPointInputs(scenario: 'A');
-      _calculateTwoPointLoad();
-    });
-    _l2Controller.addListener(() {
-      if (_l2Controller.text.isNotEmpty) _clearTwoPointInputs(scenario: 'A');
-      _calculateTwoPointLoad();
-    });
+    
+    // 2点集中荷重計算用リスナー
+    void clearB() { if (_l_A_Controller.text.isNotEmpty || _l0Controller.text.isNotEmpty) _clearTwoPointInputs(scenario: 'B'); _calculateTwoPointLoad(); }
+    void clearA() { if (_l_B_Controller.text.isNotEmpty || _l1Controller.text.isNotEmpty || _l2Controller.text.isNotEmpty) _clearTwoPointInputs(scenario: 'A'); _calculateTwoPointLoad(); }
+    
+    _l_A_Controller.addListener(clearB);
+    _l0Controller.addListener(clearB);
+    _l_B_Controller.addListener(clearA);
+    _l1Controller.addListener(clearA);
+    _l2Controller.addListener(clearA);
+
     WidgetsBinding.instance.addPostFrameCallback((_) => _triggerAllCalculations());
   }
 
+  // ▼▼▼ ロジック: データ適用 ▼▼▼
   void _applyTemplate(KochuhyoData data) {
-      _shippingDateController.text = data.shippingDate;
-      _issueDateController.text = data.issueDate;
-      _serialNumberController.text = data.serialNumber;
-      _kobangoController.text = data.kobango;
-      _shihomeisakiController.text = data.shihomeisaki;
-      _hinmeiController.text = data.hinmei;
-      _productLengthController.text = data.productLength;
-      _productWidthController.text = data.productWidth;
-      _productHeightController.text = data.productHeight;
-      _weightController.text = data.weight;
-      _quantityController.text = data.quantity;
-      _selectedShippingType = data.shippingType;
-      _selectedPackingForm = data.packingForm;
-      _selectedFormType = data.formType;
-      _selectedMaterial = data.material;
-      _desiccantPeriodController.text = data.desiccantPeriod;
-      _selectedDesiccantCoefficient = double.tryParse(data.desiccantCoefficientValue);
-      _innerLengthController.text = data.innerLength;
-      _innerWidthController.text = data.innerWidth;
-      _innerHeightController.text = data.innerHeight;
+    _shippingDateController.text = data.shippingDate;
+    _issueDateController.text = data.issueDate;
+    _serialNumberController.text = data.serialNumber;
+    _kobangoController.text = data.kobango;
+    _shihomeisakiController.text = data.shihomeisaki;
+    _hinmeiController.text = data.hinmei;
+    _productLengthController.text = data.productLength;
+    _productWidthController.text = data.productWidth;
+    _productHeightController.text = data.productHeight;
+    _weightController.text = data.weight;
+    _quantityController.text = data.quantity;
+    _selectedShippingType = data.shippingType;
+    _selectedPackingForm = data.packingForm;
+    _selectedFormType = data.formType;
+    _selectedMaterial = data.material;
+    _desiccantPeriodController.text = data.desiccantPeriod;
+    _selectedDesiccantCoefficient = double.tryParse(data.desiccantCoefficientValue);
+    _innerLengthController.text = data.innerLength;
+    _innerWidthController.text = data.innerWidth;
+    _innerHeightController.text = data.innerHeight;
 
-      _outerLengthController.text = data.outerLength;
-      _outerWidthController.text = data.outerWidth;
-      _outerHeightController.text = data.outerHeight;
-      if (data.outerLength.isNotEmpty) {
-        _isOuterLengthManuallyEdited = true;
-      }
-      if (data.outerWidth.isNotEmpty) {
-        _isOuterWidthManuallyEdited = true;
-      }
-      if (data.outerHeight.isNotEmpty) {
-        _isOuterHeightManuallyEdited = true;
-      }
+    _outerLengthController.text = data.outerLength;
+    _outerWidthController.text = data.outerWidth;
+    _outerHeightController.text = data.outerHeight;
+    if (data.outerLength.isNotEmpty) _isOuterLengthManuallyEdited = true;
+    if (data.outerWidth.isNotEmpty) _isOuterWidthManuallyEdited = true;
+    if (data.outerHeight.isNotEmpty) _isOuterHeightManuallyEdited = true;
 
-      _skidWidthController.text = data.skidWidth;
-      _skidThicknessController.text = data.skidThickness;
-      _skidQuantityController.text = data.skidQuantity;
-      _hWidthController.text = data.hWidth;
-      _hThicknessController.text = data.hThickness;
-      _hFixingMethod = data.hFixingMethod;
-      _selectedSuriGetaType = data.suriGetaType;
-      _suriGetaWidthController.text = data.suriGetaWidth;
-      _suriGetaThicknessController.text = data.suriGetaThickness;
-      _getaQuantityController.text = data.getaQuantity;
-      _floorBoardThicknessController.text = data.floorBoardThickness;
-      _isJitaMijikame = data.isFloorBoardShort;
-      _loadBearingMaterialWidthController.text = data.loadBearingMaterialWidth;
-      _loadBearingMaterialThicknessController.text = data.loadBearingMaterialThickness;
-      _loadBearingMaterialQuantityController.text = data.loadBearingMaterialQuantity;
-      _loadCalculationMethod = data.loadCalculationMethod;
-      _sideBoardThicknessController.text = data.sideBoardThickness;
-      _selectedKamachiType = data.kamachiType;
-      _upperKamachiWidthController.text = data.upperKamachiWidth;
-      _upperKamachiThicknessController.text = data.upperKamachiThickness;
-      _lowerKamachiWidthController.text = data.lowerKamachiWidth;
-      _lowerKamachiThicknessController.text = data.lowerKamachiThickness;
-      _pillarWidthController.text = data.pillarWidth;
-      _pillarThicknessController.text = data.pillarThickness;
-      _beamReceiverWidthController.text = data.beamReceiverWidth;
-      _beamReceiverThicknessController.text = data.beamReceiverThickness;
-      _beamReceiverEmbed = data.beamReceiverEmbed;
-      _bracePillarWidthController.text = data.bracePillarWidth;
-      _bracePillarThicknessController.text = data.bracePillarThickness;
-      _bracePillarShortEnds = data.bracePillarShortEnds;
-      _ceilingUpperBoardThicknessController.text = data.ceilingUpperBoardThickness;
-      _ceilingLowerBoardThicknessController.text = data.ceilingLowerBoardThickness;
-      _hariWidthController.text = data.hariWidth;
-      _hariThicknessController.text = data.hariThickness;
-      _hariQuantityController.text = data.hariQuantity;
-      _pressingMaterialLengthController.text = data.pressingMaterialLength;
-      _pressingMaterialWidthController.text = data.pressingMaterialWidth;
-      _pressingMaterialThicknessController.text = data.pressingMaterialThickness;
-      _pressingMaterialQuantityController.text = data.pressingMaterialQuantity;
-      _pressingMaterialHasMolding = data.pressingMaterialHasMolding;
-      _topMaterialLengthController.text = data.topMaterialLength;
-      _topMaterialWidthController.text = data.topMaterialWidth;
-      _topMaterialThicknessController.text = data.topMaterialThickness;
-      _topMaterialQuantityController.text = data.topMaterialQuantity;
-      _koshitaImageBytes = data.koshitaImageBytes;
-      _gawaTsumaImageBytes = data.gawaTsumaImageBytes;
-      _koshitaDrawingElements = data.koshitaDrawingElements
-          .map((json) => DrawingElement.fromJson(json))
-          .toList();
-      _gawaTsumaDrawingElements = data.gawaTsumaDrawingElements
-          .map((json) => DrawingElement.fromJson(json))
-          .toList();
+    _skidWidthController.text = data.skidWidth;
+    _skidThicknessController.text = data.skidThickness;
+    _skidQuantityController.text = data.skidQuantity;
+    _hWidthController.text = data.hWidth;
+    _hThicknessController.text = data.hThickness;
+    _hFixingMethod = data.hFixingMethod;
+    _selectedSuriGetaType = data.suriGetaType;
+    _suriGetaWidthController.text = data.suriGetaWidth;
+    _suriGetaThicknessController.text = data.suriGetaThickness;
+    _getaQuantityController.text = data.getaQuantity;
+    _floorBoardThicknessController.text = data.floorBoardThickness;
+    _isJitaMijikame = data.isFloorBoardShort;
+    _loadBearingMaterialWidthController.text = data.loadBearingMaterialWidth;
+    _loadBearingMaterialThicknessController.text = data.loadBearingMaterialThickness;
+    _loadBearingMaterialQuantityController.text = data.loadBearingMaterialQuantity;
+    _loadCalculationMethod = data.loadCalculationMethod;
+    _sideBoardThicknessController.text = data.sideBoardThickness;
+    _selectedKamachiType = data.kamachiType;
+    _upperKamachiWidthController.text = data.upperKamachiWidth;
+    _upperKamachiThicknessController.text = data.upperKamachiThickness;
+    _lowerKamachiWidthController.text = data.lowerKamachiWidth;
+    _lowerKamachiThicknessController.text = data.lowerKamachiThickness;
+    _pillarWidthController.text = data.pillarWidth;
+    _pillarThicknessController.text = data.pillarThickness;
+    _beamReceiverWidthController.text = data.beamReceiverWidth;
+    _beamReceiverThicknessController.text = data.beamReceiverThickness;
+    _beamReceiverEmbed = data.beamReceiverEmbed;
+    _bracePillarWidthController.text = data.bracePillarWidth;
+    _bracePillarThicknessController.text = data.bracePillarThickness;
+    _bracePillarShortEnds = data.bracePillarShortEnds;
+    _ceilingUpperBoardThicknessController.text = data.ceilingUpperBoardThickness;
+    _ceilingLowerBoardThicknessController.text = data.ceilingLowerBoardThickness;
+    _hariWidthController.text = data.hariWidth;
+    _hariThicknessController.text = data.hariThickness;
+    _hariQuantityController.text = data.hariQuantity;
+    _pressingMaterialLengthController.text = data.pressingMaterialLength;
+    _pressingMaterialWidthController.text = data.pressingMaterialWidth;
+    _pressingMaterialThicknessController.text = data.pressingMaterialThickness;
+    _pressingMaterialQuantityController.text = data.pressingMaterialQuantity;
+    _pressingMaterialHasMolding = data.pressingMaterialHasMolding;
+    _topMaterialLengthController.text = data.topMaterialLength;
+    _topMaterialWidthController.text = data.topMaterialWidth;
+    _topMaterialThicknessController.text = data.topMaterialThickness;
+    _topMaterialQuantityController.text = data.topMaterialQuantity;
+    _koshitaImageBytes = data.koshitaImageBytes;
+    _gawaTsumaImageBytes = data.gawaTsumaImageBytes;
+    _koshitaDrawingElements = data.koshitaDrawingElements
+        .map((json) => DrawingElement.fromJson(json))
+        .toList();
+    _gawaTsumaDrawingElements = data.gawaTsumaDrawingElements
+        .map((json) => DrawingElement.fromJson(json))
+        .toList();
 
-      for (int i = 0; i < data.rootStops.length && i < _rootStopLengthControllers.length; i++) {
-        final parser = DimensionParser(data.rootStops[i]);
-        _rootStopLengthControllers[i].text = parser.l;
-        _rootStopWidthControllers[i].text = parser.w;
-        _rootStopThicknessControllers[i].text = parser.t;
-        _rootStopQuantityControllers[i].text = parser.qty;
-      }
+    for (int i = 0; i < data.rootStops.length && i < _rootStopLengthControllers.length; i++) {
+      final parser = DimensionParser(data.rootStops[i]);
+      _rootStopLengthControllers[i].text = parser.l;
+      _rootStopWidthControllers[i].text = parser.w;
+      _rootStopThicknessControllers[i].text = parser.t;
+      _rootStopQuantityControllers[i].text = parser.qty;
+    }
 
-      for (int i = 0; i < data.additionalParts.length && i < _additionalPartNameControllers.length; i++) {
-        final part = data.additionalParts[i];
-        _additionalPartNameControllers[i].text = part['name'] ?? '';
-        final parser = DimensionParser(part['dims'] ?? '');
-        _additionalPartLengthControllers[i].text = parser.l;
-        _additionalPartWidthControllers[i].text = parser.w;
-        _additionalPartThicknessControllers[i].text = parser.t;
-        _additionalPartQuantityControllers[i].text = parser.qty;
-      }
+    for (int i = 0; i < data.additionalParts.length && i < _additionalPartNameControllers.length; i++) {
+      final part = data.additionalParts[i];
+      _additionalPartNameControllers[i].text = part['name'] ?? '';
+      final parser = DimensionParser(part['dims'] ?? '');
+      _additionalPartLengthControllers[i].text = parser.l;
+      _additionalPartWidthControllers[i].text = parser.w;
+      _additionalPartThicknessControllers[i].text = parser.t;
+      _additionalPartQuantityControllers[i].text = parser.qty;
+    }
 
-      final skidSize = '${data.skidWidth}×${data.skidThickness}';
-      if (_skidSizeOptions.contains(skidSize)) {
-        _selectedSkidSize = skidSize;
-      }
-      final hSize = '${data.hWidth}×${data.hThickness}';
-      if (_hSizeOptions.contains(hSize)) {
-        _selectedHSize = hSize;
-      }
-      final suriGetaSize = '${data.suriGetaWidth}×${data.suriGetaThickness}';
-      if (_suriGetaSizeOptions.contains(suriGetaSize)) {
-        _selectedSuriGetaSize = suriGetaSize;
-      }
-      final loadBearingMaterialSize = '${data.loadBearingMaterialWidth}×${data.loadBearingMaterialThickness}';
-      if (_loadBearingMaterialSizeOptions.contains(loadBearingMaterialSize)) {
-        _selectedLoadBearingMaterialSize = loadBearingMaterialSize;
-      }
-      final beamReceiverSize = '${data.beamReceiverWidth}×${data.beamReceiverThickness}';
-      if (_beamReceiverSizeOptions.contains(beamReceiverSize)) {
-        _selectedBeamReceiverSize = beamReceiverSize;
-      }
-      final bracePillarSize = '${data.bracePillarWidth}×${data.bracePillarThickness}';
-      if (_bracePillarSizeOptions.contains(bracePillarSize)) {
-        _selectedBracePillarSize = bracePillarSize;
-      }
-      final hariSize = '${data.hariWidth}×${data.hariThickness}';
-      if (_hariSizeOptions.contains(hariSize)) {
-        _selectedHariSize = hariSize;
-      }
+    // ドロップダウンの初期値設定
+    if (_skidSizeOptions.contains('${data.skidWidth}×${data.skidThickness}')) {
+      _selectedSkidSize = '${data.skidWidth}×${data.skidThickness}';
+    }
+    if (_hSizeOptions.contains('${data.hWidth}×${data.hThickness}')) {
+      _selectedHSize = '${data.hWidth}×${data.hThickness}';
+    }
+    if (_suriGetaSizeOptions.contains('${data.suriGetaWidth}×${data.suriGetaThickness}')) {
+      _selectedSuriGetaSize = '${data.suriGetaWidth}×${data.suriGetaThickness}';
+    }
+    if (_loadBearingMaterialSizeOptions.contains('${data.loadBearingMaterialWidth}×${data.loadBearingMaterialThickness}')) {
+      _selectedLoadBearingMaterialSize = '${data.loadBearingMaterialWidth}×${data.loadBearingMaterialThickness}';
+    }
+    if (_beamReceiverSizeOptions.contains('${data.beamReceiverWidth}×${data.beamReceiverThickness}')) {
+      _selectedBeamReceiverSize = '${data.beamReceiverWidth}×${data.beamReceiverThickness}';
+    }
+    if (_bracePillarSizeOptions.contains('${data.bracePillarWidth}×${data.bracePillarThickness}')) {
+      _selectedBracePillarSize = '${data.bracePillarWidth}×${data.bracePillarThickness}';
+    }
+    if (_hariSizeOptions.contains('${data.hariWidth}×${data.hariThickness}')) {
+      _selectedHariSize = '${data.hariWidth}×${data.hariThickness}';
+    }
   }
 
   @override
   void dispose() {
     _focusNodes.forEach((_, node) => node.dispose());
+    // 全てのコントローラーを破棄
     final allControllers = [
       _shippingDateController, _issueDateController, _serialNumberController, _kobangoController,
       _shihomeisakiController, _hinmeiController,
@@ -832,6 +382,8 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
     }
     super.dispose();
   }
+
+  // ▼▼▼ フォーカス管理 ▼▼▼
   void _initFocusNodes() {
     _orderedFocusNodeKeys = [
       'shippingDate', 'issueDate', 'serialNumber', 'kobango', 'shihomeisaki', 'hinmei',
@@ -855,6 +407,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
       _focusNodes[key] = FocusNode();
     }
   }
+
   void _nextFocus(String currentKey) {
     final currentIndex = _orderedFocusNodeKeys.indexOf(currentKey);
     if (currentIndex != -1 && currentIndex < _orderedFocusNodeKeys.length - 1) {
@@ -871,6 +424,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
       FocusScope.of(context).unfocus();
     }
   }
+
   Future<void> _selectDate(TextEditingController controller, String currentKey) async {
     DateTime? picked = await showDatePicker(
       context: context, initialDate: DateTime.now(),
@@ -883,14 +437,15 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
       _nextFocus(currentKey);
     }
   }
-  
+
+  // ▼▼▼ 計算ロジック ▼▼▼
   void _triggerAllCalculations() {
-      _calculateOuterDimensions();
-      _calculatePackagingVolume();
-      _calculateDesiccant();
-      _calculateUniformLoad();
-      _calculateCentralLoad();
-      _calculateTwoPointLoad();
+    _calculateOuterDimensions();
+    _calculatePackagingVolume();
+    _calculateDesiccant();
+    _calculateUniformLoad();
+    _calculateCentralLoad();
+    _calculateTwoPointLoad();
   }
 
   void _calculateOuterDimensions() {
@@ -917,25 +472,20 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
     final roundedOuterHeight = (outerHeight / 10).ceil() * 10.0;
     
     setState(() {
-      if (!_isOuterLengthManuallyEdited) {
-        _outerLengthController.text = outerLength.toStringAsFixed(0);
-      }
-      if (!_isOuterWidthManuallyEdited) {
-        _outerWidthController.text = outerWidth.toStringAsFixed(0);
-      }
-      if (!_isOuterHeightManuallyEdited) {
-        _outerHeightController.text = roundedOuterHeight.toStringAsFixed(0);
-      }
+      if (!_isOuterLengthManuallyEdited) _outerLengthController.text = outerLength.toStringAsFixed(0);
+      if (!_isOuterWidthManuallyEdited) _outerWidthController.text = outerWidth.toStringAsFixed(0);
+      if (!_isOuterHeightManuallyEdited) _outerHeightController.text = roundedOuterHeight.toStringAsFixed(0);
     });
   }
 
   void _calculatePackagingVolume() {
-      final outerLength = double.tryParse(_outerLengthController.text) ?? 0.0;
-      final outerWidth = double.tryParse(_outerWidthController.text) ?? 0.0;
-      final outerHeight = double.tryParse(_outerHeightController.text) ?? 0.0;
-      final volume = (outerLength / 1000.0) * (outerWidth / 1000.0) * (outerHeight / 1000.0);
-      _packagingVolumeDisplayController.text = volume.toStringAsFixed(3);
+    final outerLength = double.tryParse(_outerLengthController.text) ?? 0.0;
+    final outerWidth = double.tryParse(_outerWidthController.text) ?? 0.0;
+    final outerHeight = double.tryParse(_outerHeightController.text) ?? 0.0;
+    final volume = (outerLength / 1000.0) * (outerWidth / 1000.0) * (outerHeight / 1000.0);
+    _packagingVolumeDisplayController.text = volume.toStringAsFixed(3);
   }
+
   void _calculateDesiccant() {
     final length = double.tryParse(_innerLengthController.text) ?? 0.0;
     final width = double.tryParse(_innerWidthController.text) ?? 0.0;
@@ -951,13 +501,12 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
     final amount = surfaceAreaM2 * 0.15 * period * coefficient * 1.1;
     final roundedAmount = (amount / 0.5).ceil() * 0.5;
     setState(() {
-      if (roundedAmount == roundedAmount.truncate()) {
-        _desiccantResultDisplayController.text = roundedAmount.toStringAsFixed(0);
-      } else {
-        _desiccantResultDisplayController.text = roundedAmount.toStringAsFixed(1);
-      }
+      _desiccantResultDisplayController.text = (roundedAmount == roundedAmount.truncate()) 
+        ? roundedAmount.toStringAsFixed(0) 
+        : roundedAmount.toStringAsFixed(1);
     });
   }
+
   double _calculateSpanLength() {
     final innerWidthMm = double.tryParse(_innerWidthController.text) ?? 0.0;
     final skidWidthMm = double.tryParse(_skidWidthController.text) ?? 0.0;
@@ -975,6 +524,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
     }
     return lCm;
   }
+
   void _calculateUniformLoad() {
     if (_loadCalculationMethod != '等分布荷重') {
       if (_loadCalculationMethod != '中央集中荷重') _allowableLoadDisplayController.text = '';
@@ -987,9 +537,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
       setState(() {
         _wUniform = 0;
         _allowableLoadDisplayController.text = '計算不可';
-        if (_loadCalculationMethod == '等分布荷重') {
-            _loadBearingMaterialQuantityController.text = '';
-        }
+        if (_loadCalculationMethod == '等分布荷重') _loadBearingMaterialQuantityController.text = '';
       });
       return;
     }
@@ -1003,34 +551,28 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
       if (_loadCalculationMethod == '等分布荷重') {
         final totalWeight = double.tryParse(_weightController.text) ?? 0.0;
         int quantity = 0;
-        if (_wUniform > 0 && totalWeight > 0) {
-          quantity = (totalWeight / _wUniform).ceil();
-        }
+        if (_wUniform > 0 && totalWeight > 0) quantity = (totalWeight / _wUniform).ceil();
         _loadBearingMaterialQuantityController.text = quantity.toString();
       }
     });
   }
+
   void _calculateCentralLoad() {
-    if (_loadCalculationMethod != '中央集中荷重') {
-      return;
-    }
+    if (_loadCalculationMethod != '中央集中荷重') return;
     final lCm = _calculateSpanLength();
     final bMm = double.tryParse(_loadBearingMaterialWidthController.text) ?? 0.0;
     final hMm = double.tryParse(_loadBearingMaterialThicknessController.text) ?? 0.0;
     if (lCm <= 0 || bMm <= 0 || hMm <= 0) {
-      setState(() {
-        _allowableLoadDisplayController.text = '計算不可';
-      });
+      setState(() { _allowableLoadDisplayController.text = '計算不可'; });
       return;
     }
     final bCm = bMm / 10.0;
     final hCm = hMm / 10.0;
     const fb = 107;
     final wKg = (2 * bCm * (hCm * hCm) * fb) / (3 * lCm);
-    setState(() {
-       _allowableLoadDisplayController.text = wKg.toStringAsFixed(1);
-    });
+    setState(() { _allowableLoadDisplayController.text = wKg.toStringAsFixed(1); });
   }
+
   void _clearTwoPointInputs({required String scenario}) {
     if (scenario == 'A') {
       _l_A_Controller.clear();
@@ -1041,14 +583,13 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
       _l2Controller.clear();
     }
   }
+
   void _calculateTwoPointLoad() {
     if (_loadCalculationMethod != '2点集中荷重') {
       setState(() {
         _multiplierDisplayController.text = '';
         _allowableLoadFinalDisplayController.text = '';
-        if (_loadCalculationMethod != '等分布荷重') {
-           _loadBearingMaterialQuantityController.text = '';
-        }
+        if (_loadCalculationMethod != '等分布荷重') _loadBearingMaterialQuantityController.text = '';
       });
       return;
     }
@@ -1060,17 +601,10 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
     double multiplier = 0;
     if (l_A > 0 && l0 > 0) {
       multiplier = l_A / (4 * l0);
-    } 
-    else if (l_B > 0 && (l1 > 0 || l2 > 0)) {
-        if (l2 > l1) {
-            final temp = l1;
-            l1 = l2;
-            l2 = temp;
-        }
+    } else if (l_B > 0 && (l1 > 0 || l2 > 0)) {
+        if (l2 > l1) { final temp = l1; l1 = l2; l2 = temp; }
         final denominator = 4 * (l_B - l1 + l2) * l1;
-        if (denominator > 0) {
-            multiplier = (l_B * l_B) / denominator;
-        }
+        if (denominator > 0) multiplier = (l_B * l_B) / denominator;
     }
     if (multiplier <= 0) {
       setState(() {
@@ -1080,21 +614,18 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
       });
       return;
     }
-    if (multiplier > 2.0) {
-      multiplier = 2.0;
-    }
+    if (multiplier > 2.0) multiplier = 2.0;
     final wFinal = _wUniform * multiplier;
     final totalWeight = double.tryParse(_weightController.text) ?? 0.0;
     int quantity = 0;
-    if (wFinal > 0 && totalWeight > 0) {
-      quantity = (totalWeight / wFinal).ceil();
-    }
+    if (wFinal > 0 && totalWeight > 0) quantity = (totalWeight / wFinal).ceil();
     setState(() {
       _multiplierDisplayController.text = multiplier.toStringAsFixed(2);
       _allowableLoadFinalDisplayController.text = wFinal.toStringAsFixed(1);
       _loadBearingMaterialQuantityController.text = quantity.toString();
     });
   }
+
   void _updateKamachiDimensions(String? value) {
     setState(() {
       _selectedKamachiType = value;
@@ -1114,6 +645,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
     });
     _triggerAllCalculations();
   }
+
   void _updateDimensionsFromDropdown(String? selectedValue, TextEditingController widthController, TextEditingController thicknessController) {
     if (selectedValue == null) return;
     final parts = selectedValue.split('×');
@@ -1125,6 +657,8 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
       _triggerAllCalculations();
     }
   }
+
+  // ▼▼▼ 画面遷移 & 保存 ▼▼▼
   void _navigateToKoshitaDrawingScreen() async {
     final result = await Navigator.of(context).push(
       MaterialPageRoute(
@@ -1135,7 +669,6 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
         ),
       ),
     );
-
     if (result != null && result is Map<String, dynamic>) {
       setState(() {
         _koshitaDrawingElements = result['elements'] as List<DrawingElement>? ?? _koshitaDrawingElements;
@@ -1154,7 +687,6 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
         ),
       ),
     );
-
     if (result != null && result is Map<String, dynamic>) {
       setState(() {
         _gawaTsumaDrawingElements = result['elements'] as List<DrawingElement>? ?? _gawaTsumaDrawingElements;
@@ -1289,44 +821,32 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
     try {
       final directory = await getApplicationDocumentsDirectory();
       final historyDir = Directory('${directory.path}/history');
-      if (!await historyDir.exists()) {
-        await historyDir.create(recursive: true);
-      }
+      if (!await historyDir.exists()) await historyDir.create(recursive: true);
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final file = File('${historyDir.path}/history_$timestamp.json');
       await file.writeAsString(jsonEncode(data.toJson()));
     } catch (e) {
-      if (mounted) {
-         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('履歴の保存に失敗しました: $e'), backgroundColor: Colors.red),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('履歴の保存に失敗しました: $e'), backgroundColor: Colors.red));
     }
   }
 
-  // ▼▼▼【変更】別名で保存のロジック（既存フォルダ選択機能） ▼▼▼
   void _saveAsNewTemplate() async {
     final data = _collectData();
     final jsonString = jsonEncode(data.toJson());
-    
     final productNameController = TextEditingController();
     final defaultFileName = _hinmeiController.text;
     final templateNameController = TextEditingController(text: defaultFileName);
 
-    // 既存のフォルダリストを取得
     final directory = await getApplicationDocumentsDirectory();
     final List<Directory> folders = [];
     if (await directory.exists()) {
       final entities = directory.listSync();
       for (var entity in entities) {
-        if (entity is Directory && !entity.path.endsWith('/history')) {
-          folders.add(entity);
-        }
+        if (entity is Directory && !entity.path.endsWith('/history')) folders.add(entity);
       }
     }
     final folderNames = folders.map((f) => f.path.split(Platform.pathSeparator).last).toList()..sort();
     String? selectedFolder;
-
 
     final result = await showDialog<Map<String, String>>(
       context: context,
@@ -1356,45 +876,25 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
                   const SizedBox(height: 8),
                   TextField(
                     controller: productNameController,
-                    onChanged: (value) {
-                      if (selectedFolder != null) {
-                        setState(() { selectedFolder = null; });
-                      }
-                    },
-                    decoration: const InputDecoration(
-                      labelText: '新規製品名 (フォルダ名)',
-                      hintText: '例: 製品A',
-                      border: OutlineInputBorder(),
-                    ),
+                    onChanged: (value) { if (selectedFolder != null) setState(() { selectedFolder = null; }); },
+                    decoration: const InputDecoration(labelText: '新規製品名 (フォルダ名)', hintText: '例: 製品A', border: OutlineInputBorder()),
                   ),
                   const SizedBox(height: 16),
                   TextField(
                     controller: templateNameController,
-                    decoration: const InputDecoration(
-                      labelText: 'テンプレート名 (ファイル名)',
-                      hintText: '例: 基本パターン',
-                      border: OutlineInputBorder(),
-                    ),
+                    decoration: const InputDecoration(labelText: 'テンプレート名 (ファイル名)', hintText: '例: 基本パターン', border: OutlineInputBorder()),
                   ),
                 ],
               ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('キャンセル'),
-                ),
+                TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('キャンセル')),
                 TextButton(
                   onPressed: () {
                     final productName = selectedFolder ?? productNameController.text;
                     if (productName.isNotEmpty && templateNameController.text.isNotEmpty) {
-                      Navigator.of(context).pop({
-                        'product': productName,
-                        'template': templateNameController.text,
-                      });
+                      Navigator.of(context).pop({'product': productName, 'template': templateNameController.text});
                     } else {
-                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('製品名とテンプレート名を入力してください。'), backgroundColor: Colors.red),
-                      );
+                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('製品名とテンプレート名を入力してください。'), backgroundColor: Colors.red));
                     }
                   },
                   child: const Text('保存'),
@@ -1409,710 +909,92 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
     if (result != null) {
       final productName = result['product']!;
       final templateName = result['template']!;
-      
       try {
         final productDir = Directory('${directory.path}/$productName');
-        if (!await productDir.exists()) {
-          await productDir.create(recursive: true);
-        }
-
+        if (!await productDir.exists()) await productDir.create(recursive: true);
         final path = '${productDir.path}/$templateName.json';
         final file = File(path);
         await file.writeAsString(jsonString);
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('製品「$productName」にテンプレート「$templateName」を保存しました。'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('製品「$productName」にテンプレート「$templateName」を保存しました。'), backgroundColor: Colors.green));
       } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('保存に失敗しました: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存に失敗しました: $e'), backgroundColor: Colors.red));
       }
     }
   }
 
   Future<void> _overwriteTemplate() async {
     if (widget.templatePath == null) return;
-
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('上書き保存の確認'),
         content: const Text('現在の内容でこのテンプレートを上書きします。\nよろしいですか？'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('キャンセル'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('上書き保存', style: TextStyle(color: Colors.blue)),
-          ),
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('キャンセル')),
+          TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('上書き保存', style: TextStyle(color: Colors.blue))),
         ],
       ),
     );
-
     if (confirmed != true) return;
-
     final data = _collectData();
-    final jsonString = jsonEncode(data.toJson());
-
     try {
       final file = File(widget.templatePath!);
-      await file.writeAsString(jsonString);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('テンプレートを上書き保存しました。'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
+      await file.writeAsString(jsonEncode(data.toJson()));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('テンプレートを上書き保存しました。'), backgroundColor: Colors.green));
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('上書き保存に失敗しました: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('上書き保存に失敗しました: $e'), backgroundColor: Colors.red));
     }
   }
 
+  // ▼▼▼ 画面構築 (タブ構成) ▼▼▼
   @override
   Widget build(BuildContext context) {
     bool isTwoPointLoad = _loadCalculationMethod == '2点集中荷重';
 
+    final tabs = [
+      const Tab(text: '基本情報'),
+      const Tab(text: '寸法'),
+      const Tab(text: '腰下'),
+      const Tab(text: '側・妻'),
+      const Tab(text: '天井'),
+      const Tab(text: '梱包材'),
+      const Tab(text: '追加部材'),
+    ];
+
     return GestureDetector(
-      onTap: () {
-        FocusScope.of(context).unfocus();
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('工注票', style: TextStyle(fontWeight: FontWeight.bold)),
-          centerTitle: true,
-        ),
-        body: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: DefaultTabController(
+        length: tabs.length,
+        initialIndex: 0,
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('工注票', style: TextStyle(fontWeight: FontWeight.bold)),
+            centerTitle: true,
+            bottom: TabBar(
+              tabs: tabs,
+              isScrollable: true,
+              labelColor: Colors.blueAccent,
+              unselectedLabelColor: Colors.grey,
+              indicatorColor: Colors.blueAccent,
+            ),
+          ),
+          body: SafeArea(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Center(
-                  child: Text('工 注 票', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                ),
-                const SizedBox(height: 16),
-                
-                _CollapsibleSection(
-                  title: '基本情報セクション',
-                  child: Column(
+                Expanded(
+                  child: TabBarView(
                     children: [
-                      Row(
-                        children: [
-                          Expanded(child: _buildLabeledDateInput('出荷日', 'shippingDate', _shippingDateController, _selectDate)),
-                          const SizedBox(width: 16),
-                          Expanded(child: _buildLabeledDateInput('発行日', 'issueDate', _issueDateController, _selectDate)),
-                        ],
-                      ),
-                      _buildLabeledTextField('整理番号', 'serialNumber', _serialNumberController, hintText: 'A-100'),
-                      _buildLabeledTextField('工番', 'kobango', _kobangoController),
-                      _buildLabeledTextField('仕向先', 'shihomeisaki', _shihomeisakiController),
-                      _buildLabeledTextField('品名', 'hinmei', _hinmeiController),
-                      // ▼▼▼【変更】製品サイズの表示方法を修正 ▼▼▼
-                      _buildLabeledTripleInputRow('製品サイズ',
-                        'productLength', _productLengthController, '長',
-                        'productWidth', _productWidthController, '幅',
-                        'productHeight', _productHeightController, '高'
-                      ),
-                      _buildLabeledDropdown(
-                        '材質', 
-                        'material',
-                        _selectedMaterial, 
-                        _materialOptions,
-                        (value) => setState(() => _selectedMaterial = value),
-                        '材質を選択'
-                      ),
-                      _buildLabeledTextField('重量', 'weight', _weightController, keyboardType: TextInputType.number, unit: 'KG'),
-                      _buildLabeledTextField('数量', 'quantity', _quantityController, keyboardType: TextInputType.number, unit: 'C/S'),
-                      
-                      _buildVerticalInputGroup(
-                        "乾燥剤",
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: 2,
-                              child: _buildLabeledTextField('期間', 'desiccantPeriod',_desiccantPeriodController,
-                                keyboardType: TextInputType.number, hintText: '期間', unit: 'ヶ月', showLabel: false),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              flex: 3,
-                              child: _buildDropdownBase<double>(
-                                 focusNode: _focusNodes['desiccantCoefficient']!,
-                                 value: _selectedDesiccantCoefficient,
-                                 hint: '係数',
-                                 items: _desiccantCoefficients.entries.map((entry) {
-                                    return DropdownMenuItem<double>(value: entry.value, child: Text(entry.key, style: const TextStyle(fontSize: 14)));
-                                  }).toList(),
-                                 onChanged: (value) {
-                                  setState(() => _selectedDesiccantCoefficient = value);
-                                  _calculateDesiccant();
-                                  _nextFocus('desiccantCoefficient');
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            const Text('=', style: TextStyle(fontWeight: FontWeight.bold)),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              flex: 2,
-                              child: _buildLabeledTextField('結果', 'desiccantResult',_desiccantResultDisplayController,
-                                 readOnly: true, hintText: '結果', unit: 'kg', showLabel: false),
-                            ),
-                          ],
-                        )
-                      ),
-
-                      const SizedBox(height: 16),
-                      _buildRadioGroup("出荷形態", "shippingType", _selectedShippingType, ['国内', '輸出'], (val) => setState(()=> _selectedShippingType = val)),
-                      const SizedBox(height: 16),
-                      _buildRadioGroup("形式", "formType", _selectedFormType, _formTypeOptions, (val) {
-                          setState(() => _selectedFormType = val);
-                          _triggerAllCalculations();
-                      }),
-                      const SizedBox(height: 16),
-                      _buildRadioGroup("形状", "packingForm", _selectedPackingForm, ['密閉', 'すかし'], (val) => setState(()=> _selectedPackingForm = val)),
+                      SingleChildScrollView(padding: const EdgeInsets.all(16.0), child: _buildBasicInfoTab()),
+                      SingleChildScrollView(padding: const EdgeInsets.all(16.0), child: _buildDimensionsTab()),
+                      SingleChildScrollView(padding: const EdgeInsets.all(16.0), child: _buildKoshitaTab(isTwoPointLoad)),
+                      SingleChildScrollView(padding: const EdgeInsets.all(16.0), child: _buildGawaTsumaTab()),
+                      SingleChildScrollView(padding: const EdgeInsets.all(16.0), child: _buildTenjoTab()),
+                      SingleChildScrollView(padding: const EdgeInsets.all(16.0), child: _buildKonpozaiTab()),
+                      SingleChildScrollView(padding: const EdgeInsets.all(16.0), child: _buildAdditionalPartsTab()),
                     ],
                   ),
                 ),
-                
-                _CollapsibleSection(
-                  title: '寸法セクション',
-                  child: Column(
-                    children: [
-                      _buildTripleInputRow('内寸',
-                        'innerLength', _innerLengthController, '長',
-                        'innerWidth', _innerWidthController, '幅',
-                        'innerHeight', _innerHeightController, '高'
-                      ),
-                      _buildTripleInputRow('外寸',
-                        'outerLength', _outerLengthController, '長',
-                        'outerWidth', _outerWidthController, '幅',
-                        'outerHeight', _outerHeightController, '高',
-                      ),
-                      _buildLabeledTextField('梱包明細: 容積', 'packagingVolume',_packagingVolumeDisplayController, readOnly: true, unit: 'm³'),
-                    ],
-                  )
-                ),
-
-                // ( ... 以下、腰下セクション以降のUI定義は変更ありません ... )
-                
-                _CollapsibleSection(
-                  title: '腰下セクション',
-                  child: Column(
-                    children: [
-                       _buildVerticalInputGroup(
-                        '滑材',
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildTripleInputRowWithUnit(
-                              'skidWidth', _skidWidthController, '幅',
-                              'skidThickness', _skidThicknessController, '厚',
-                              'skidQuantity', _skidQuantityController, '本',
-                            ),
-                            const SizedBox(height: 8),
-                            _buildDimensionDropdown(
-                              selectedValue: _selectedSkidSize,
-                              options: _skidSizeOptions,
-                              onChanged: (newValue) {
-                                setState(() { _selectedSkidSize = newValue; });
-                                _updateDimensionsFromDropdown(newValue, _skidWidthController, _skidThicknessController);
-                              },
-                              hintText: '滑材サイズを選択',
-                            ),
-                          ],
-                        ),
-                      ),
-                      
-                      _buildVerticalInputGroup(
-                        'H',
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(flex: 3, child: _buildDoubleInputRowWithUnit('hWidth', _hWidthController, '幅', 'hThickness', _hThicknessController, '厚さ')),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  flex: 2,
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text('止め方', style: TextStyle(fontSize: 12)),
-                                      _buildRadioGroup(null, 'hFixingMethod', _hFixingMethod, ['釘', 'ボルト'], (value) => setState(() => _hFixingMethod = value)),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            _buildDimensionDropdown(
-                              selectedValue: _selectedHSize,
-                              options: _hSizeOptions,
-                              onChanged: (newValue) {
-                                setState(() { _selectedHSize = newValue; });
-                                _updateDimensionsFromDropdown(newValue, _hWidthController, _hThicknessController);
-                              },
-                              hintText: 'Hサイズを選択',
-                            ),
-                          ],
-                        )
-                      ),
-                      
-                      _buildVerticalInputGroup(
-                        'すり材 or ゲタ',
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                           _buildRadioGroup(null, "suriGetaType", _selectedSuriGetaType, ['すり材', 'ゲタ'], (val){
-                               setState(() { _selectedSuriGetaType = val; _triggerAllCalculations(); });
-                           }),
-                            Row(
-                              children: [
-                                Expanded(child: _buildLabeledTextField('幅', 'suriGetaWidth', _suriGetaWidthController, keyboardType: TextInputType.number, hintText: '幅', unit: 'mm', showLabel: false)),
-                                const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
-                                Expanded(child: _buildLabeledTextField('厚さ', 'suriGetaThickness', _suriGetaThicknessController, keyboardType: TextInputType.number, hintText: '厚さ', unit: 'mm', showLabel: false)),
-                                const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('・')),
-                                Expanded(
-                                  child: _buildLabeledTextField('本数', 'getaQuantity', _getaQuantityController,
-                                    keyboardType: TextInputType.number, hintText: '本数', unit: '本',
-                                    enabled: _selectedSuriGetaType == 'ゲタ', showLabel: false),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            _buildDimensionDropdown(
-                              selectedValue: _selectedSuriGetaSize,
-                              options: _suriGetaSizeOptions,
-                              onChanged: (newValue) {
-                                setState(() { _selectedSuriGetaSize = newValue; });
-                                _updateDimensionsFromDropdown(newValue, _suriGetaWidthController, _suriGetaThicknessController);
-                              },
-                              hintText: 'すり材/ゲタ サイズを選択',
-                            ),
-                          ],
-                        ),
-                      ),
-                      
-                      _buildVerticalInputGroup(
-                        '床板',
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildLabeledTextField('床板', 'floorBoardThickness', _floorBoardThicknessController, keyboardType: TextInputType.number, unit: 'mm', showLabel: false),
-                            ),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Checkbox(
-                                  value: _isJitaMijikame,
-                                  onChanged: (bool? value) {
-                                    setState(() {
-                                      _isJitaMijikame = value ?? false;
-                                    });
-                                  },
-                                ),
-                                GestureDetector(
-                                  onTap: () {
-                                     setState(() {
-                                      _isJitaMijikame = !_isJitaMijikame;
-                                    });
-                                  },
-                                  child: const Text('地板短め'),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      
-                      _buildVerticalInputGroup(
-                        '負荷床材',
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(child: _buildLabeledTextField('', 'loadBearingMaterialWidth', _loadBearingMaterialWidthController, hintText: '幅', keyboardType: TextInputType.number, showLabel: false, unit: 'mm')),
-                                const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
-                                Expanded(child: _buildLabeledTextField('', 'loadBearingMaterialThickness', _loadBearingMaterialThicknessController, hintText: '厚さ', keyboardType: TextInputType.number, showLabel: false, unit: 'mm')),
-                                const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('・')),
-                                Expanded(child: _buildLabeledTextField(
-                                  '', 
-                                  'loadBearingMaterialQuantity', 
-                                  _loadBearingMaterialQuantityController, 
-                                  hintText: '本', 
-                                  keyboardType: TextInputType.number, 
-                                  showLabel: false, 
-                                  unit: '本',
-                                  enabled: _loadCalculationMethod != '2点集中荷重', 
-                                )),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            _buildDimensionDropdown(
-                              selectedValue: _selectedLoadBearingMaterialSize,
-                              options: _loadBearingMaterialSizeOptions,
-                              onChanged: (newValue) {
-                                setState(() { _selectedLoadBearingMaterialSize = newValue; });
-                                _updateDimensionsFromDropdown(newValue, _loadBearingMaterialWidthController, _loadBearingMaterialThicknessController);
-                              },
-                              hintText: '負荷床材サイズを選択',
-                            ),
-                          ],
-                        )
-                      ),
-                      
-                      if (_loadCalculationMethod == '等分布荷重')
-                        _buildVerticalInputGroup(
-                          '許容荷重W[等分布]',
-                          _buildLabeledTextField('', 'allowableLoad', _allowableLoadDisplayController, readOnly: true, unit: 'kg/本', showLabel: false),
-                        ),
-                      if (_loadCalculationMethod == '中央集中荷重')
-                        _buildVerticalInputGroup(
-                          '許容荷重W[中央集中]',
-                          _buildLabeledTextField('', 'allowableLoad', _allowableLoadDisplayController, readOnly: true, unit: 'kg/本', showLabel: false),
-                        ),
-                        
-                      _buildRadioGroup(
-                        "計算方法",
-                        "loadCalculationMethod",
-                        _loadCalculationMethod,
-                        ['非計算', '等分布荷重', '中央集中荷重', '2点集中荷重'],
-                        (val) {
-                          setState(() {
-                            _loadCalculationMethod = val;
-                            _allowableLoadDisplayController.clear();
-                            _multiplierDisplayController.clear();
-                            _allowableLoadFinalDisplayController.clear();
-                            if (val != '等分布荷重') {
-                               _loadBearingMaterialQuantityController.clear();
-                            }
-                            if (val != '非計算') {
-                              _triggerAllCalculations();
-                            }
-                          });
-                        }
-                      ),
-                      
-                      if (isTwoPointLoad)
-                        Container(
-                          margin: const EdgeInsets.only(top: 8.0),
-                          padding: const EdgeInsets.all(8.0),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey.shade300),
-                            borderRadius: BorderRadius.circular(4.0)
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('2点集中荷重 詳細入力', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-                              const SizedBox(height: 12),
-                              Text('シナリオA: 均等配置', style: TextStyle(fontWeight: FontWeight.bold)),
-                              Row(
-                                children: [
-                                  Expanded(child: _buildVerticalInputGroup("l", _buildLabeledTextField('l', 'l_A', _l_A_Controller, keyboardType: TextInputType.number, unit: 'cm', showLabel: false))),
-                                  const SizedBox(width: 8),
-                                  Expanded(child: _buildVerticalInputGroup("l0", _buildLabeledTextField('l0', 'l0', _l0Controller, keyboardType: TextInputType.number, unit: 'cm', showLabel: false))),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Text('シナリオB: 不均等配置', style: TextStyle(fontWeight: FontWeight.bold)),
-                               Row(
-                                children: [
-                                  Expanded(child: _buildVerticalInputGroup("l", _buildLabeledTextField('l', 'l_B', _l_B_Controller, keyboardType: TextInputType.number, unit: 'cm', showLabel: false))),
-                                  const SizedBox(width: 8),
-                                  Expanded(child: _buildVerticalInputGroup("l1", _buildLabeledTextField('l1', 'l1', _l1Controller, keyboardType: TextInputType.number, unit: 'cm', showLabel: false))),
-                                  const SizedBox(width: 8),
-                                  Expanded(child: _buildVerticalInputGroup("l2", _buildLabeledTextField('l2', 'l2', _l2Controller, keyboardType: TextInputType.number, unit: 'cm', showLabel: false))),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              const Divider(),
-                              const SizedBox(height: 8),
-                               _buildVerticalInputGroup(
-                                '倍率',
-                                 TextField(
-                                   controller: _multiplierDisplayController, 
-                                   readOnly: true, 
-                                   decoration: InputDecoration(
-                                     border: const OutlineInputBorder(), 
-                                     isDense: true, 
-                                     contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                     filled: true,
-                                     fillColor: Colors.grey[200],
-                                  ),
-                                 ),
-                              ),
-                              _buildVerticalInputGroup(
-                                '最終許容荷重(kg/本)',
-                                 TextField(
-                                   controller: _allowableLoadFinalDisplayController, 
-                                   readOnly: true, 
-                                   decoration: InputDecoration(
-                                     border: const OutlineInputBorder(), 
-                                     isDense: true, 
-                                     contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                     filled: true,
-                                     fillColor: Colors.grey[200],
-                                   ),
-                                 ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                      _buildVerticalInputGroup(
-                        '根止め', 
-                        Column(
-                          children: [
-                            for (int i = 0; i < 5; i++)
-                              Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 2.0),
-                                child: _buildQuadInputRow(
-                                  'rootStopLength_$i', _rootStopLengthControllers[i], 'L',
-                                  'rootStopWidth_$i', _rootStopWidthControllers[i], 'W',
-                                  'rootStopThickness_$i', _rootStopThicknessControllers[i], 'T',
-                                  'rootStopQuantity_$i', _rootStopQuantityControllers[i], '本'
-                                ),
-                              ),
-                          ]
-                        )
-                      ),
-                      
-                      const SizedBox(height: 16),
-                      _buildDrawingPreview(
-                        title: '図面手書き入力 (腰下ベース)',
-                        onTap: _navigateToKoshitaDrawingScreen,
-                        imageBytes: _koshitaImageBytes,
-                        placeholder: 'タップして腰下ベースを描く',
-                      ),
-                    ],
-                  ),
-                ),
-
-                _CollapsibleSection(
-                  title: '側ツマセクション',
-                  child: Column(
-                    children: [
-                      _buildVerticalInputGroup(
-                        '外板',
-                        _buildLabeledTextField('外板', 'sideBoardThickness', _sideBoardThicknessController, keyboardType: TextInputType.number, unit: 'mm', showLabel: false),
-                      ),
-                       _buildRadioGroup("かまち種類", "kamachiType", _selectedKamachiType, ['かまち25', 'かまち40'], _updateKamachiDimensions),
-                      _buildVerticalInputGroup('上かまち', _buildDoubleInputRowWithUnit(
-                          'upperKamachiWidth', _upperKamachiWidthController, '幅',
-                          'upperKamachiThickness', _upperKamachiThicknessController, '厚さ')),
-                      _buildVerticalInputGroup('下かまち', _buildDoubleInputRowWithUnit(
-                          'lowerKamachiWidth', _lowerKamachiWidthController, '幅',
-                          'lowerKamachiThickness', _lowerKamachiThicknessController, '厚さ')),
-                      _buildVerticalInputGroup('支柱', _buildDoubleInputRowWithUnit(
-                          'pillarWidth', _pillarWidthController, '幅',
-                          'pillarThickness', _pillarThicknessController, '厚さ')),
-                      
-                      _buildVerticalInputGroup(
-                        'はり受',
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildDimensionWithCheckbox(
-                              null,
-                              'beamReceiverWidth', _beamReceiverWidthController,
-                              'beamReceiverThickness', _beamReceiverThicknessController,
-                              '埋める', _beamReceiverEmbed, (value) => setState(() => _beamReceiverEmbed = value!)
-                            ),
-                             const SizedBox(height: 8),
-                            _buildDimensionDropdown(
-                              selectedValue: _selectedBeamReceiverSize,
-                              options: _beamReceiverSizeOptions,
-                              onChanged: (newValue) {
-                                setState(() { _selectedBeamReceiverSize = newValue; });
-                                _updateDimensionsFromDropdown(newValue, _beamReceiverWidthController, _beamReceiverThicknessController);
-                              },
-                              hintText: 'はり受サイズを選択',
-                            ),
-                          ],
-                        )
-                      ),
-                       _buildVerticalInputGroup(
-                        'そえ柱',
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildDimensionWithCheckbox(
-                              null,
-                              'bracePillarWidth', _bracePillarWidthController,
-                              'bracePillarThickness', _bracePillarThicknessController,
-                              '両端短め', _bracePillarShortEnds, (value) => setState(() => _bracePillarShortEnds = value!)
-                            ),
-                            const SizedBox(height: 8),
-                            _buildDimensionDropdown(
-                              selectedValue: _selectedBracePillarSize,
-                              options: _bracePillarSizeOptions,
-                              onChanged: (newValue) {
-                                setState(() { _selectedBracePillarSize = newValue; });
-                                _updateDimensionsFromDropdown(newValue, _bracePillarWidthController, _bracePillarThicknessController);
-                              },
-                              hintText: 'そえ柱サイズを選択',
-                            ),
-                          ],
-                        )
-                      ),
-                      
-                      const SizedBox(height: 16),
-                      _buildDrawingPreview(
-                        title: '図面手書き入力 (側・妻)',
-                        onTap: _navigateToGawaTsumaDrawingScreen,
-                        imageBytes: _gawaTsumaImageBytes,
-                        placeholder: 'タップして側・妻を描く',
-                      ),
-                    ],
-                  )
-                ),
-                
-                _CollapsibleSection(
-                  title: '天井セクション',
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _buildVerticalInputGroup(
-                          '上板',
-                          _buildLabeledTextField('上板', 'ceilingUpperBoardThickness', _ceilingUpperBoardThicknessController, keyboardType: TextInputType.number, unit: 'mm', showLabel: false),
-                        )
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildVerticalInputGroup(
-                          '下板',
-                           _buildLabeledTextField('下板', 'ceilingLowerBoardThickness', _ceilingLowerBoardThicknessController, keyboardType: TextInputType.number, unit: 'mm', showLabel: false),
-                        )
-                      ),
-                    ],
-                  ),
-                ),
-                
-                _CollapsibleSection(
-                  title: '梱包材セクション',
-                  child: Column(
-                    children: [
-                      _buildVerticalInputGroup(
-                        'ハリ',
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                             _buildTripleInputRowWithUnit(
-                              'hariWidth', _hariWidthController, '幅',
-                              'hariThickness', _hariThicknessController, '厚',
-                              'hariQuantity', _hariQuantityController, '本',
-                            ),
-                            const SizedBox(height: 8),
-                             _buildDimensionDropdown(
-                              selectedValue: _selectedHariSize,
-                              options: _hariSizeOptions,
-                              onChanged: (newValue) {
-                                setState(() { _selectedHariSize = newValue; });
-                                _updateDimensionsFromDropdown(newValue, _hariWidthController, _hariThicknessController);
-                              },
-                              hintText: 'ハリ サイズを選択',
-                            ),
-                          ],
-                        ),
-                      ),
-                      _buildVerticalInputGroup('押さえ材', Column(
-                        children: [
-                          _buildQuadInputRow(
-                            'pressingMaterialLength', _pressingMaterialLengthController, 'L',
-                            'pressingMaterialWidth', _pressingMaterialWidthController, 'W',
-                            'pressingMaterialThickness', _pressingMaterialThicknessController, 'T',
-                            'pressingMaterialQuantity', _pressingMaterialQuantityController, '本'
-                          ),
-                          _buildCheckboxOption('盛り材が有', _pressingMaterialHasMolding, (value) => setState(() => _pressingMaterialHasMolding = value!)),
-                        ],
-                      )),
-                      _buildVerticalInputGroup('トップ材', _buildQuadInputRow(
-                        'topMaterialLength', _topMaterialLengthController, 'L',
-                        'topMaterialWidth', _topMaterialWidthController, 'W',
-                        'topMaterialThickness', _topMaterialThicknessController, 'T',
-                        'topMaterialQuantity', _topMaterialQuantityController, '本'
-                      )),
-                    ],
-                  ),
-                ),
-
-                _CollapsibleSection(
-                  title: '追加部材セクション (5行)',
-                  child: Column(
-                    children: [
-                       for (int i = 0; i < 5; i++)
-                        _buildAdditionalPartRow(i,
-                          'additionalPartName_$i', _additionalPartNameControllers[i],
-                          'additionalPartLength_$i', _additionalPartLengthControllers[i],
-                          'additionalPartWidth_$i', _additionalPartWidthControllers[i],
-                          'additionalPartThickness_$i', _additionalPartThicknessControllers[i],
-                          'additionalPartQuantity_$i', _additionalPartQuantityControllers[i]
-                        ),
-                    ],
-                  )
-                ),
-
-                const SizedBox(height: 32),
-                Center(
-                  child: Wrap(
-                    spacing: 12.0,
-                    runSpacing: 12.0,
-                    alignment: WrapAlignment.center,
-                    children: [
-                      if (widget.templatePath != null)
-                        ElevatedButton.icon(
-                          onPressed: _overwriteTemplate,
-                          icon: const Icon(Icons.save),
-                          label: const Text('上書き保存'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.orange.shade700,
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
-                      
-                      ElevatedButton(
-                        onPressed: _saveAsNewTemplate,
-                        child: const Text('別名で保存'),
-                      ),
-
-                      ElevatedButton.icon(
-                        onPressed: _navigateToPreviewScreen,
-                        icon: const Icon(Icons.print),
-                        label: const Text('印刷プレビュー'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                _buildBottomButtons(),
               ],
             ),
           ),
@@ -2121,436 +1003,378 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
     );
   }
 
-  Widget _buildDimensionDropdown({
-    required String? selectedValue,
-    required List<String> options,
-    required void Function(String?) onChanged,
-    required String hintText,
-  }) {
+  Widget _buildBottomButtons() {
     return Container(
-      width: 250,
-      padding: const EdgeInsets.only(top: 4.0),
-      child: DropdownButtonFormField<String>(
-        value: selectedValue,
-        hint: Text(hintText, style: const TextStyle(fontSize: 14)),
-        isExpanded: true,
-        items: options.map((size) {
-          return DropdownMenuItem<String>(
-            value: size,
-            child: Text(size, style: const TextStyle(fontSize: 14)),
-          );
-        }).toList(),
-        onChanged: onChanged,
-        decoration: const InputDecoration(
-          border: OutlineInputBorder(),
-          isDense: true,
-          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      padding: const EdgeInsets.all(12.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.3), spreadRadius: 1, blurRadius: 5, offset: const Offset(0, -3))],
+      ),
+      child: Center(
+        child: Wrap(
+          spacing: 12.0,
+          runSpacing: 12.0,
+          alignment: WrapAlignment.center,
+          children: [
+            if (widget.templatePath != null)
+              ElevatedButton.icon(
+                onPressed: _overwriteTemplate,
+                icon: const Icon(Icons.save),
+                label: const Text('上書き保存'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade700, foregroundColor: Colors.white),
+              ),
+            ElevatedButton(onPressed: _saveAsNewTemplate, child: const Text('別名で保存')),
+            ElevatedButton.icon(
+              onPressed: _navigateToPreviewScreen,
+              icon: const Icon(Icons.print),
+              label: const Text('印刷プレビュー'),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+            ),
+          ],
         ),
       ),
     );
   }
 
-   Widget _buildLabeledTextField(String label, String key, TextEditingController controller, {
-    TextInputType keyboardType = TextInputType.text,
-    bool readOnly = false,
-    bool enabled = true,
-    String? hintText,
-    String? unit,
-    bool showLabel = true,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          if (showLabel) SizedBox(width: 80, child: Text(label, style: const TextStyle(fontSize: 14))),
-          if (showLabel) const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              keyboardType: keyboardType,
-              readOnly: readOnly,
-              enabled: enabled,
-              focusNode: _focusNodes[key],
-              onSubmitted: (_) => _nextFocus(key),
-              textInputAction: TextInputAction.next,
-              decoration: InputDecoration(
-                hintText: hintText,
-                border: const OutlineInputBorder(),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                isDense: true,
-                filled: true,
-                fillColor: readOnly ? Colors.grey[200] : Colors.transparent,
-              ),
-            ),
-          ),
-          if (unit != null) ...[
-            const SizedBox(width: 8),
-            Text(unit, style: TextStyle(color: Colors.grey[700])),
-          ]
-        ],
-      ),
-    );
-  }
-  Widget _buildLabeledDateInput(String label, String key, TextEditingController controller, Function(TextEditingController, String) onSelect) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        children: [
-          SizedBox(width: 80, child: Text(label)),
+  // ▼▼▼ タブ内コンテンツ構築 ▼▼▼
+
+  Widget _buildBasicInfoTab() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(child: LabeledDateInput(label: '出荷日', controller: _shippingDateController, focusNode: _focusNodes['shippingDate'], onTap: () => _selectDate(_shippingDateController, 'shippingDate'))),
+            const SizedBox(width: 16),
+            Expanded(child: LabeledDateInput(label: '発行日', controller: _issueDateController, focusNode: _focusNodes['issueDate'], onTap: () => _selectDate(_issueDateController, 'issueDate'))),
+          ],
+        ),
+        LabeledTextField(label: '整理番号', controller: _serialNumberController, hintText: 'A-100', focusNode: _focusNodes['serialNumber'], onSubmitted: () => _nextFocus('serialNumber')),
+        LabeledTextField(label: '工番', controller: _kobangoController, focusNode: _focusNodes['kobango'], onSubmitted: () => _nextFocus('kobango')),
+        LabeledTextField(label: '仕向先', controller: _shihomeisakiController, focusNode: _focusNodes['shihomeisaki'], onSubmitted: () => _nextFocus('shihomeisaki')),
+        LabeledTextField(label: '品名', controller: _hinmeiController, focusNode: _focusNodes['hinmei'], onSubmitted: () => _nextFocus('hinmei')),
+        _buildLabeledTripleInputRow('製品サイズ',
+          'productLength', _productLengthController, '長',
+          'productWidth', _productWidthController, '幅',
+          'productHeight', _productHeightController, '高'
+        ),
+        LabeledDropdown<String>(
+          label: '材質',
+          value: _selectedMaterial,
+          items: _materialOptions.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+          onChanged: (value) { setState(() => _selectedMaterial = value); _nextFocus('material'); },
+          hint: '材質を選択',
+          focusNode: _focusNodes['material'],
+        ),
+        LabeledTextField(label: '重量', controller: _weightController, keyboardType: TextInputType.number, unit: 'KG', focusNode: _focusNodes['weight'], onSubmitted: () => _nextFocus('weight')),
+        LabeledTextField(label: '数量', controller: _quantityController, keyboardType: TextInputType.number, unit: 'C/S', focusNode: _focusNodes['quantity'], onSubmitted: () => _nextFocus('quantity')),
+        
+        VerticalInputGroup("乾燥剤", Row(children: [
+          Expanded(flex: 2, child: LabeledTextField(label: '期間', controller: _desiccantPeriodController, keyboardType: TextInputType.number, hintText: '期間', unit: 'ヶ月', showLabel: false, focusNode: _focusNodes['desiccantPeriod'], onSubmitted: () => _nextFocus('desiccantPeriod'))),
           const SizedBox(width: 8),
-          Expanded(child: GestureDetector(
-            onTap: () => onSelect(controller, key),
-            child: AbsorbPointer(
-              child: TextField(
-                controller: controller,
-                readOnly: true,
-                focusNode: _focusNodes[key],
-                textInputAction: TextInputAction.next,
-                decoration: InputDecoration(
-                  hintText: 'yyyy/MM/dd',
-                  border: const OutlineInputBorder(),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  isDense: true,
-                ),
-              ),
-            ),
+          Expanded(flex: 3, child: LabeledDropdown<double>(
+            label: '',
+            value: _selectedDesiccantCoefficient,
+            items: _desiccantCoefficients.entries.map((e) => DropdownMenuItem(value: e.value, child: Text(e.key, style: const TextStyle(fontSize: 14)))).toList(),
+            onChanged: (value) { setState(() => _selectedDesiccantCoefficient = value); _calculateDesiccant(); _nextFocus('desiccantCoefficient'); },
+            hint: '係数',
+            focusNode: _focusNodes['desiccantCoefficient'],
           )),
-        ],
-      ),
-    );
-  }
-  Widget _buildLabeledDropdown<T>(String label, String key, T? value, List<String> items, ValueChanged<String?> onChanged, String hint) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          SizedBox(width: 80, child: Text(label)),
           const SizedBox(width: 8),
-          Expanded(
-            child: _buildDropdownBase<String>(
-              focusNode: _focusNodes[key]!,
-              value: value as String?,
-              hint: hint,
-              items: items.map((item) => DropdownMenuItem<String>(
-                value: item,
-                child: Text(item, style: const TextStyle(fontSize: 14)),
-              )).toList(),
-              onChanged: (val) {
-                onChanged(val);
-                _nextFocus(key);
-              }
-            )
-          ),
-        ],
-      ),
+          const Text('=', style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(width: 8),
+          Expanded(flex: 2, child: LabeledTextField(label: '結果', controller: _desiccantResultDisplayController, readOnly: true, hintText: '結果', unit: 'kg', showLabel: false)),
+        ])),
+        const SizedBox(height: 16),
+        RadioGroup(title: "出荷形態", groupValue: _selectedShippingType, options: const ['国内', '輸出'], onChanged: (val) { setState(() => _selectedShippingType = val); _nextFocus('shippingType'); }, focusNode: _focusNodes['shippingType']),
+        const SizedBox(height: 16),
+        RadioGroup(title: "形式", groupValue: _selectedFormType, options: _formTypeOptions, onChanged: (val) { setState(() => _selectedFormType = val); _triggerAllCalculations(); _nextFocus('formType'); }, focusNode: _focusNodes['formType']),
+        const SizedBox(height: 16),
+        RadioGroup(title: "形状", groupValue: _selectedPackingForm, options: const ['密閉', 'すかし'], onChanged: (val) { setState(() => _selectedPackingForm = val); _nextFocus('packingForm'); }, focusNode: _focusNodes['packingForm']),
+      ],
     );
   }
-  Widget _buildDropdownBase<T>({
-    required FocusNode focusNode,
-    required T? value,
-    required String hint,
-    required List<DropdownMenuItem<T>> items,
-    required ValueChanged<T?> onChanged,
-  }) {
-    return DropdownButtonFormField<T>(
-      focusNode: focusNode,
-      value: value,
-      isDense: true,
-      decoration: InputDecoration(
-        border: const OutlineInputBorder(),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        isDense: true,
-      ),
-      hint: Text(hint),
-      items: items,
-      onChanged: onChanged,
-    );
-  }
-  Widget _buildRadioGroup(String? title, String groupKey, String? groupValue, List<String> options, ValueChanged<String?> onChanged) {
-    Widget radioList = Row(
-      children: options.map((option) => Expanded(
-        child: Row(
-          children: [
-            Radio<String>(
-              value: option,
-              groupValue: groupValue,
-              onChanged: (val) {
-                onChanged(val);
-                _nextFocus(groupKey);
-              },
-              visualDensity: VisualDensity.compact,
-              focusNode: _focusNodes[groupKey],
-            ),
-            Flexible(child: Text(option, style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis)),
-          ],
+
+  Widget _buildDimensionsTab() {
+    return Column(
+      children: [
+        _buildTripleInputRow('内寸',
+          'innerLength', _innerLengthController, '長',
+          'innerWidth', _innerWidthController, '幅',
+          'innerHeight', _innerHeightController, '高'
         ),
-      )).toList(),
-    );
-    if (title == null) return radioList;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        radioList,
-      ],
-    );
-  }
-  Widget _buildVerticalInputGroup(String title, Widget child) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-          const SizedBox(height: 6),
-          child,
-        ],
-      ),
-    );
-  }
-  Widget _buildDrawingPreview({
-    required String title,
-    required VoidCallback onTap,
-    required Uint8List? imageBytes,
-    required String placeholder,
-  }) {
-    const double previewHeight = 250.0;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        InkWell(
-          onTap: onTap,
-          child: Container(
-            height: previewHeight,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey.shade400),
-              borderRadius: BorderRadius.circular(8.0),
-              color: Colors.grey.shade100,
-            ),
-            child: imageBytes == null
-                ? Center(child: Text(placeholder, style: TextStyle(color: Colors.grey.shade700)))
-                : Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Image.memory(
-                      imageBytes,
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) =>
-                          const Center(child: Text('画像表示エラー')),
-                    ),
-                  ),
-          ),
+        _buildTripleInputRow('外寸',
+          'outerLength', _outerLengthController, '長',
+          'outerWidth', _outerWidthController, '幅',
+          'outerHeight', _outerHeightController, '高',
         ),
+        LabeledTextField(label: '梱包明細: 容積', controller: _packagingVolumeDisplayController, readOnly: true, unit: 'm³'),
       ],
     );
   }
-  Widget _buildRadioOption(String value, String? groupValue, ValueChanged<String?> onChanged) {
-    return Expanded(
-      child: Row(
-        children: [
-          Radio<String>(value: value, groupValue: groupValue, onChanged: onChanged, visualDensity: VisualDensity.compact),
-          Flexible(child: Text(value, style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis)),
-        ],
-      ),
-    );
-  }
-  Widget _buildCheckboxOption(String label, bool value, ValueChanged<bool?> onChanged) {
-    return Row(
-      children: [
-        Checkbox(value: value, onChanged: onChanged, visualDensity: VisualDensity.compact),
-        Text(label, style: const TextStyle(fontSize: 14)),
-      ],
-    );
-  }
-  Widget _buildFormTypeRadioButtons() {
+
+  Widget _buildKoshitaTab(bool isTwoPointLoad) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: _formTypeOptions.map((key) {
-        return SizedBox(
-          height: 36,
-          child: Row(
-            children: [
-              Radio<String>(
-                value: key,
-                groupValue: _selectedFormType,
-                onChanged: (String? value) {
-                  setState(() => _selectedFormType = value);
-                  _triggerAllCalculations();
-                  _nextFocus('formType');
-                },
-                visualDensity: VisualDensity.compact,
-                focusNode: _focusNodes['formType'],
+      children: [
+         VerticalInputGroup('滑材', Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            _buildTripleInputRowWithUnit(
+              'skidWidth', _skidWidthController, '幅',
+              'skidThickness', _skidThicknessController, '厚',
+              'skidQuantity', _skidQuantityController, '本',
+            ),
+            const SizedBox(height: 8),
+            DimensionDropdown(selectedValue: _selectedSkidSize, options: _skidSizeOptions, onChanged: (v) { setState(() { _selectedSkidSize = v; }); _updateDimensionsFromDropdown(v, _skidWidthController, _skidThicknessController); }, hintText: '滑材サイズを選択'),
+          ])),
+        
+        VerticalInputGroup('H', Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(flex: 3, child: _buildDoubleInputRowWithUnit('hWidth', _hWidthController, '幅', 'hThickness', _hThicknessController, '厚さ')),
+              const SizedBox(width: 16),
+              Expanded(flex: 2, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('止め方', style: TextStyle(fontSize: 12)),
+                RadioGroup(groupValue: _hFixingMethod, options: const ['釘', 'ボルト'], onChanged: (v) => setState(() => _hFixingMethod = v), focusNode: _focusNodes['hFixingMethod']),
+              ])),
+            ]),
+            const SizedBox(height: 8),
+            DimensionDropdown(selectedValue: _selectedHSize, options: _hSizeOptions, onChanged: (v) { setState(() { _selectedHSize = v; }); _updateDimensionsFromDropdown(v, _hWidthController, _hThicknessController); }, hintText: 'Hサイズを選択'),
+        ])),
+        
+        VerticalInputGroup('すり材 or ゲタ', Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+             RadioGroup(groupValue: _selectedSuriGetaType, options: const ['すり材', 'ゲタ'], onChanged: (v) { setState(() { _selectedSuriGetaType = v; _triggerAllCalculations(); }); }, focusNode: _focusNodes['suriGetaType']),
+              Row(children: [
+                Expanded(child: LabeledTextField(controller: _suriGetaWidthController, keyboardType: TextInputType.number, hintText: '幅', unit: 'mm', showLabel: false, focusNode: _focusNodes['suriGetaWidth'], onSubmitted: () => _nextFocus('suriGetaWidth'))),
+                const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
+                Expanded(child: LabeledTextField(controller: _suriGetaThicknessController, keyboardType: TextInputType.number, hintText: '厚さ', unit: 'mm', showLabel: false, focusNode: _focusNodes['suriGetaThickness'], onSubmitted: () => _nextFocus('suriGetaThickness'))),
+                const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('・')),
+                Expanded(child: LabeledTextField(controller: _getaQuantityController, keyboardType: TextInputType.number, hintText: '本数', unit: '本', enabled: _selectedSuriGetaType == 'ゲタ', showLabel: false, focusNode: _focusNodes['getaQuantity'], onSubmitted: () => _nextFocus('getaQuantity'))),
+              ]),
+              const SizedBox(height: 8),
+              DimensionDropdown(selectedValue: _selectedSuriGetaSize, options: _suriGetaSizeOptions, onChanged: (v) { setState(() { _selectedSuriGetaSize = v; }); _updateDimensionsFromDropdown(v, _suriGetaWidthController, _suriGetaThicknessController); }, hintText: 'すり材/ゲタ サイズを選択'),
+        ])),
+        
+        VerticalInputGroup('床板', Row(children: [
+            Expanded(child: LabeledTextField(controller: _floorBoardThicknessController, keyboardType: TextInputType.number, unit: 'mm', showLabel: false, focusNode: _focusNodes['floorBoardThickness'], onSubmitted: () => _nextFocus('floorBoardThickness'))),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+                Checkbox(value: _isJitaMijikame, onChanged: (v) => setState(() => _isJitaMijikame = v ?? false)),
+                GestureDetector(onTap: () => setState(() => _isJitaMijikame = !_isJitaMijikame), child: const Text('地板短め')),
+            ]),
+        ])),
+        
+        VerticalInputGroup('負荷床材', Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: LabeledTextField(controller: _loadBearingMaterialWidthController, hintText: '幅', keyboardType: TextInputType.number, showLabel: false, unit: 'mm', focusNode: _focusNodes['loadBearingMaterialWidth'], onSubmitted: () => _nextFocus('loadBearingMaterialWidth'))),
+              const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
+              Expanded(child: LabeledTextField(controller: _loadBearingMaterialThicknessController, hintText: '厚さ', keyboardType: TextInputType.number, showLabel: false, unit: 'mm', focusNode: _focusNodes['loadBearingMaterialThickness'], onSubmitted: () => _nextFocus('loadBearingMaterialThickness'))),
+              const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('・')),
+              Expanded(child: LabeledTextField(controller: _loadBearingMaterialQuantityController, hintText: '本', keyboardType: TextInputType.number, showLabel: false, unit: '本', enabled: _loadCalculationMethod != '2点集中荷重', focusNode: _focusNodes['loadBearingMaterialQuantity'], onSubmitted: () => _nextFocus('loadBearingMaterialQuantity'))),
+            ]),
+            const SizedBox(height: 8),
+            DimensionDropdown(selectedValue: _selectedLoadBearingMaterialSize, options: _loadBearingMaterialSizeOptions, onChanged: (v) { setState(() { _selectedLoadBearingMaterialSize = v; }); _updateDimensionsFromDropdown(v, _loadBearingMaterialWidthController, _loadBearingMaterialThicknessController); }, hintText: '負荷床材サイズを選択'),
+        ])),
+        
+        if (_loadCalculationMethod == '等分布荷重' || _loadCalculationMethod == '中央集中荷重')
+          VerticalInputGroup(_loadCalculationMethod == '等分布荷重' ? '許容荷重W[等分布]' : '許容荷重W[中央集中]', 
+            LabeledTextField(controller: _allowableLoadDisplayController, readOnly: true, unit: 'kg/本', showLabel: false)),
+          
+        RadioGroup(title: "計算方法", groupValue: _loadCalculationMethod, options: const ['非計算', '等分布荷重', '中央集中荷重', '2点集中荷重'], onChanged: (val) {
+          setState(() {
+            _loadCalculationMethod = val;
+            _allowableLoadDisplayController.clear();
+            _multiplierDisplayController.clear();
+            _allowableLoadFinalDisplayController.clear();
+            if (val != '等分布荷重') _loadBearingMaterialQuantityController.clear();
+            if (val != '非計算') _triggerAllCalculations();
+          });
+          _nextFocus('loadCalculationMethod');
+        }, focusNode: _focusNodes['loadCalculationMethod']),
+        
+        if (isTwoPointLoad) Container(
+            margin: const EdgeInsets.only(top: 8.0),
+            padding: const EdgeInsets.all(8.0),
+            decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(4.0)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('2点集中荷重 詳細入力', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
+              const SizedBox(height: 12),
+              const Text('シナリオA: 均等配置', style: TextStyle(fontWeight: FontWeight.bold)),
+              Row(children: [
+                Expanded(child: VerticalInputGroup("l", LabeledTextField(controller: _l_A_Controller, keyboardType: TextInputType.number, unit: 'cm', showLabel: false, focusNode: _focusNodes['l_A'], onSubmitted: () => _nextFocus('l_A')))),
+                const SizedBox(width: 8),
+                Expanded(child: VerticalInputGroup("l0", LabeledTextField(controller: _l0Controller, keyboardType: TextInputType.number, unit: 'cm', showLabel: false, focusNode: _focusNodes['l0'], onSubmitted: () => _nextFocus('l0')))),
+              ]),
+              const SizedBox(height: 12),
+              const Text('シナリオB: 不均等配置', style: TextStyle(fontWeight: FontWeight.bold)),
+              Row(children: [
+                Expanded(child: VerticalInputGroup("l", LabeledTextField(controller: _l_B_Controller, keyboardType: TextInputType.number, unit: 'cm', showLabel: false, focusNode: _focusNodes['l_B'], onSubmitted: () => _nextFocus('l_B')))),
+                const SizedBox(width: 8),
+                Expanded(child: VerticalInputGroup("l1", LabeledTextField(controller: _l1Controller, keyboardType: TextInputType.number, unit: 'cm', showLabel: false, focusNode: _focusNodes['l1'], onSubmitted: () => _nextFocus('l1')))),
+                const SizedBox(width: 8),
+                Expanded(child: VerticalInputGroup("l2", LabeledTextField(controller: _l2Controller, keyboardType: TextInputType.number, unit: 'cm', showLabel: false, focusNode: _focusNodes['l2'], onSubmitted: () => _nextFocus('l2')))),
+              ]),
+              const SizedBox(height: 12),
+              const Divider(),
+              VerticalInputGroup('倍率', LabeledTextField(controller: _multiplierDisplayController, readOnly: true, showLabel: false)),
+              VerticalInputGroup('最終許容荷重(kg/本)', LabeledTextField(controller: _allowableLoadFinalDisplayController, readOnly: true, showLabel: false)),
+            ]),
+        ),
+
+        VerticalInputGroup('根止め', Column(children: [
+            for (int i = 0; i < 5; i++) Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2.0),
+              child: _buildQuadInputRow(
+                'rootStopLength_$i', _rootStopLengthControllers[i], 'L',
+                'rootStopWidth_$i', _rootStopWidthControllers[i], 'W',
+                'rootStopThickness_$i', _rootStopThicknessControllers[i], 'T',
+                'rootStopQuantity_$i', _rootStopQuantityControllers[i], '本'
               ),
-              Text(key, style: const TextStyle(fontSize: 14)),
-            ],
-          ),
-        );
-      }).toList(),
-    );
-  }
-  Widget _buildDoubleInputRowWithUnit(
-    String key1, TextEditingController ctrl1, String hint1,
-    String key2, TextEditingController ctrl2, String hint2
-  ) {
-     return Row(
-      children: [
-        Expanded(child: _buildLabeledTextField('', key1, ctrl1, hintText: hint1, keyboardType: TextInputType.number, showLabel: false, unit: 'mm')),
-        const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
-        Expanded(child: _buildLabeledTextField('', key2, ctrl2, hintText: hint2, keyboardType: TextInputType.number, showLabel: false, unit: 'mm')),
-      ],
-    );
-  }
-
-  // ▼▼▼【変更】製品サイズ表示用に1行表示オプションを追加 ▼▼▼
-  Widget _buildTripleInputRow(String title,
-    String key1, TextEditingController ctrl1, String hint1,
-    String key2, TextEditingController ctrl2, String hint2,
-    String key3, TextEditingController ctrl3, String hint3,
-    {bool isReadOnly = false, bool showTitleAsLabel = false}
-  ) {
-    final inputRow = Row(
-      children: [
-        Expanded(child: _buildLabeledTextField('', key1, ctrl1, hintText: hint1, keyboardType: TextInputType.number, readOnly: isReadOnly, showLabel: false, unit: 'mm')),
-        const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
-        Expanded(child: _buildLabeledTextField('', key2, ctrl2, hintText: hint2, keyboardType: TextInputType.number, readOnly: isReadOnly, showLabel: false, unit: 'mm')),
-        const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
-        Expanded(child: _buildLabeledTextField('', key3, ctrl3, hintText: hint3, keyboardType: TextInputType.number, readOnly: isReadOnly, showLabel: false, unit: 'mm')),
-      ],
-    );
-
-    if (showTitleAsLabel) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4.0),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            SizedBox(width: 80, child: Text(title, style: const TextStyle(fontSize: 14))),
-            const SizedBox(width: 8),
-            Expanded(child: inputRow),
-          ],
-        ),
-      );
-    }
-    return _buildVerticalInputGroup(title, inputRow);
-  }
-
-  // ▼▼▼【変更】製品サイズ表示用に1行表示版の呼び出しを追加 ▼▼▼
-  Widget _buildLabeledTripleInputRow(String title,
-    String key1, TextEditingController ctrl1, String hint1,
-    String key2, TextEditingController ctrl2, String hint2,
-    String key3, TextEditingController ctrl3, String hint3,
-  ) {
-    return _buildTripleInputRow(
-      title,
-      key1, ctrl1, hint1,
-      key2, ctrl2, hint2,
-      key3, ctrl3, hint3,
-      showTitleAsLabel: true,
-    );
-  }
-
-  Widget _buildTripleInputRowWithUnit(
-    String key1, TextEditingController ctrl1, String hint1,
-    String key2, TextEditingController ctrl2, String hint2,
-    String key3, TextEditingController ctrl3, String hint3,
-    {bool isQuantityReadOnly = false}
-  ) {
-    return Row(
-      children: [
-        Expanded(child: _buildLabeledTextField('', key1, ctrl1, hintText: hint1, keyboardType: TextInputType.number, showLabel: false, unit: 'mm')),
-        const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
-        Expanded(child: _buildLabeledTextField('', key2, ctrl2, hintText: hint2, keyboardType: TextInputType.number, showLabel: false, unit: 'mm')),
-        const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('・')),
-        Expanded(child: _buildLabeledTextField('', key3, ctrl3, hintText: hint3, keyboardType: TextInputType.number, readOnly: isQuantityReadOnly, showLabel: false, unit: '本')),
-      ],
-    );
-  }
-  Widget _buildQuadInputRow(
-    String key1, TextEditingController ctrl1, String hint1,
-    String key2, TextEditingController ctrl2, String hint2,
-    String key3, TextEditingController ctrl3, String hint3,
-    String key4, TextEditingController ctrl4, String hint4,
-  ) {
-    return Row(
-      children: [
-        Expanded(child: _buildLabeledTextField('', key1, ctrl1, hintText: hint1, keyboardType: TextInputType.number, showLabel: false, unit: 'mm')),
-        const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
-        Expanded(child: _buildLabeledTextField('', key2, ctrl2, hintText: hint2, keyboardType: TextInputType.number, showLabel: false, unit: 'mm')),
-        const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
-        Expanded(child: _buildLabeledTextField('', key3, ctrl3, hintText: hint3, keyboardType: TextInputType.number, showLabel: false, unit: 'mm')),
-        const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('・')),
-        Expanded(child: _buildLabeledTextField('', key4, ctrl4, hintText: hint4, keyboardType: TextInputType.number, showLabel: false, unit: '本')),
-      ],
-    );
-  }
-  Widget _buildDimensionWithRadioInput(
-    String label,
-    String key1, TextEditingController dim1Ctrl, String hint1,
-    String key2, TextEditingController dim2Ctrl, String hint2,
-    String radioLabel, List<String> radioOptions, String? groupValue, ValueChanged<String?> onChanged,
-    String radioGroupKey
-  ) {
-    return _buildVerticalInputGroup(label, Row(
-        children: [
-          Expanded(flex: 3, child: _buildDoubleInputRowWithUnit(key1, dim1Ctrl, hint1, key2, dim2Ctrl, hint2)),
-          const SizedBox(width: 16),
-          Expanded(
-            flex: 2,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(radioLabel, style: const TextStyle(fontSize: 12)),
-                _buildRadioGroup(null, radioGroupKey, groupValue, radioOptions, onChanged),
-              ],
             ),
-          ),
-        ],
-      ));
-  }
-  Widget _buildDimensionWithCheckbox(
-    String? label,
-    String key1, TextEditingController dim1Ctrl,
-    String key2, TextEditingController ctrl2,
-    String checkboxLabel, bool checkboxValue, ValueChanged<bool?> onChanged
-  ) {
-    final content = Row(
-      children: [
-        Expanded(flex: 2, child: _buildDoubleInputRowWithUnit(key1, dim1Ctrl, '幅', key2, ctrl2, '厚さ')),
-        const SizedBox(width: 8),
-        Expanded(flex: 1, child: _buildCheckboxOption(checkboxLabel, checkboxValue, onChanged)),
+        ])),
+        
+        const SizedBox(height: 16),
+        DrawingPreview(title: '図面手書き入力 (腰下ベース)', onTap: _navigateToKoshitaDrawingScreen, imageBytes: _koshitaImageBytes, placeholder: 'タップして腰下ベースを描く'),
       ],
     );
-    if (label != null) {
-      return _buildVerticalInputGroup(label, content);
-    }
-    return content;
   }
-  Widget _buildAdditionalPartRow(int rowIndex,
-    String nameKey, TextEditingController nameCtrl,
-    String lenKey, TextEditingController lenCtrl,
-    String widthKey, TextEditingController widthCtrl,
-    String thicknessKey, TextEditingController thicknessCtrl,
-    String quantityKey, TextEditingController quantityCtrl
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        children: [
-          SizedBox(width: 80, child: TextField(controller: nameCtrl, focusNode: _focusNodes[nameKey], onSubmitted: (_) => _nextFocus(nameKey), textInputAction: TextInputAction.next, decoration: InputDecoration(hintText: '部材名', border: OutlineInputBorder(), isDense: true))),
-          const SizedBox(width: 8),
-          Expanded(child: _buildLabeledTextField('', lenKey, lenCtrl, hintText: 'L', keyboardType: TextInputType.number, showLabel: false, unit: 'mm')),
-          const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
-          Expanded(child: _buildLabeledTextField('', widthKey, widthCtrl, hintText: 'W', keyboardType: TextInputType.number, showLabel: false, unit: 'mm')),
-          const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
-          Expanded(child: _buildLabeledTextField('', thicknessKey, thicknessCtrl, hintText: 'T', keyboardType: TextInputType.number, showLabel: false, unit: 'mm')),
-          const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('・')),
-          Expanded(child: _buildLabeledTextField('', quantityKey, quantityCtrl, hintText: '数', keyboardType: TextInputType.number, showLabel: false, unit: '本')),
-        ],
-      ),
+
+  Widget _buildGawaTsumaTab() {
+    return Column(
+      children: [
+        VerticalInputGroup('外板', LabeledTextField(controller: _sideBoardThicknessController, keyboardType: TextInputType.number, unit: 'mm', showLabel: false, focusNode: _focusNodes['sideBoardThickness'], onSubmitted: () => _nextFocus('sideBoardThickness'))),
+        RadioGroup(title: "かまち種類", groupValue: _selectedKamachiType, options: const ['かまち25', 'かまち40'], onChanged: _updateKamachiDimensions, focusNode: _focusNodes['kamachiType']),
+        VerticalInputGroup('上かまち', _buildDoubleInputRowWithUnit('upperKamachiWidth', _upperKamachiWidthController, '幅', 'upperKamachiThickness', _upperKamachiThicknessController, '厚さ')),
+        VerticalInputGroup('下かまち', _buildDoubleInputRowWithUnit('lowerKamachiWidth', _lowerKamachiWidthController, '幅', 'lowerKamachiThickness', _lowerKamachiThicknessController, '厚さ')),
+        VerticalInputGroup('支柱', _buildDoubleInputRowWithUnit('pillarWidth', _pillarWidthController, '幅', 'pillarThickness', _pillarThicknessController, '厚さ')),
+        
+        VerticalInputGroup('はり受', Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+             _buildDimensionWithCheckbox(null, 'beamReceiverWidth', _beamReceiverWidthController, 'beamReceiverThickness', _beamReceiverThicknessController, '埋める', _beamReceiverEmbed, (v) => setState(() => _beamReceiverEmbed = v!)),
+             const SizedBox(height: 8),
+             DimensionDropdown(selectedValue: _selectedBeamReceiverSize, options: _beamReceiverSizeOptions, onChanged: (v) { setState(() { _selectedBeamReceiverSize = v; }); _updateDimensionsFromDropdown(v, _beamReceiverWidthController, _beamReceiverThicknessController); }, hintText: 'はり受サイズを選択'),
+        ])),
+         VerticalInputGroup('そえ柱', Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            _buildDimensionWithCheckbox(null, 'bracePillarWidth', _bracePillarWidthController, 'bracePillarThickness', _bracePillarThicknessController, '両端短め', _bracePillarShortEnds, (v) => setState(() => _bracePillarShortEnds = v!)),
+            const SizedBox(height: 8),
+            DimensionDropdown(selectedValue: _selectedBracePillarSize, options: _bracePillarSizeOptions, onChanged: (v) { setState(() { _selectedBracePillarSize = v; }); _updateDimensionsFromDropdown(v, _bracePillarWidthController, _bracePillarThicknessController); }, hintText: 'そえ柱サイズを選択'),
+        ])),
+        
+        const SizedBox(height: 16),
+        DrawingPreview(title: '図面手書き入力 (側・妻)', onTap: _navigateToGawaTsumaDrawingScreen, imageBytes: _gawaTsumaImageBytes, placeholder: 'タップして側・妻を描く'),
+      ],
     );
+  }
+
+  Widget _buildTenjoTab() {
+    return Row(children: [
+        Expanded(child: VerticalInputGroup('上板', LabeledTextField(controller: _ceilingUpperBoardThicknessController, keyboardType: TextInputType.number, unit: 'mm', showLabel: false, focusNode: _focusNodes['ceilingUpperBoardThickness'], onSubmitted: () => _nextFocus('ceilingUpperBoardThickness')))),
+        const SizedBox(width: 16),
+        Expanded(child: VerticalInputGroup('下板', LabeledTextField(controller: _ceilingLowerBoardThicknessController, keyboardType: TextInputType.number, unit: 'mm', showLabel: false, focusNode: _focusNodes['ceilingLowerBoardThickness'], onSubmitted: () => _nextFocus('ceilingLowerBoardThickness')))),
+    ]);
+  }
+
+  Widget _buildKonpozaiTab() {
+    return Column(children: [
+        VerticalInputGroup('ハリ', Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+             _buildTripleInputRowWithUnit('hariWidth', _hariWidthController, '幅', 'hariThickness', _hariThicknessController, '厚', 'hariQuantity', _hariQuantityController, '本'),
+             const SizedBox(height: 8),
+             DimensionDropdown(selectedValue: _selectedHariSize, options: _hariSizeOptions, onChanged: (v) { setState(() { _selectedHariSize = v; }); _updateDimensionsFromDropdown(v, _hariWidthController, _hariThicknessController); }, hintText: 'ハリ サイズを選択'),
+        ])),
+        VerticalInputGroup('押さえ材', Column(children: [
+            _buildQuadInputRow(
+              'pressingMaterialLength', _pressingMaterialLengthController, 'L',
+              'pressingMaterialWidth', _pressingMaterialWidthController, 'W',
+              'pressingMaterialThickness', _pressingMaterialThicknessController, 'T',
+              'pressingMaterialQuantity', _pressingMaterialQuantityController, '本'
+            ),
+            Row(children: [Checkbox(value: _pressingMaterialHasMolding, onChanged: (v) => setState(() => _pressingMaterialHasMolding = v!)), const Text('盛り材が有')]),
+        ])),
+        VerticalInputGroup('トップ材', _buildQuadInputRow(
+          'topMaterialLength', _topMaterialLengthController, 'L',
+          'topMaterialWidth', _topMaterialWidthController, 'W',
+          'topMaterialThickness', _topMaterialThicknessController, 'T',
+          'topMaterialQuantity', _topMaterialQuantityController, '本'
+        )),
+    ]);
+  }
+
+  Widget _buildAdditionalPartsTab() {
+    return Column(children: [
+         for (int i = 0; i < 5; i++) _buildAdditionalPartRow(i),
+    ]);
+  }
+
+  // ▼▼▼ レイアウトヘルパー (Common UIを利用) ▼▼▼
+  Widget _buildTripleInputRow(String title, String k1, TextEditingController c1, String h1, String k2, TextEditingController c2, String h2, String k3, TextEditingController c3, String h3) {
+    return VerticalInputGroup(title, Row(children: [
+        Expanded(child: LabeledTextField(controller: c1, hintText: h1, keyboardType: TextInputType.number, showLabel: false, unit: 'mm', focusNode: _focusNodes[k1], onSubmitted: () => _nextFocus(k1))),
+        const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
+        Expanded(child: LabeledTextField(controller: c2, hintText: h2, keyboardType: TextInputType.number, showLabel: false, unit: 'mm', focusNode: _focusNodes[k2], onSubmitted: () => _nextFocus(k2))),
+        const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
+        Expanded(child: LabeledTextField(controller: c3, hintText: h3, keyboardType: TextInputType.number, showLabel: false, unit: 'mm', focusNode: _focusNodes[k3], onSubmitted: () => _nextFocus(k3))),
+    ]));
+  }
+
+  Widget _buildLabeledTripleInputRow(String title, String k1, TextEditingController c1, String h1, String k2, TextEditingController c2, String h2, String k3, TextEditingController c3, String h3) {
+    return Padding(padding: const EdgeInsets.symmetric(vertical: 4.0), child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        SizedBox(width: 80, child: Text(title, style: const TextStyle(fontSize: 14))),
+        const SizedBox(width: 8),
+        Expanded(child: Row(children: [
+            Expanded(child: LabeledTextField(controller: c1, hintText: h1, keyboardType: TextInputType.number, showLabel: false, unit: 'mm', focusNode: _focusNodes[k1], onSubmitted: () => _nextFocus(k1))),
+            const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
+            Expanded(child: LabeledTextField(controller: c2, hintText: h2, keyboardType: TextInputType.number, showLabel: false, unit: 'mm', focusNode: _focusNodes[k2], onSubmitted: () => _nextFocus(k2))),
+            const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
+            Expanded(child: LabeledTextField(controller: c3, hintText: h3, keyboardType: TextInputType.number, showLabel: false, unit: 'mm', focusNode: _focusNodes[k3], onSubmitted: () => _nextFocus(k3))),
+        ])),
+    ]));
+  }
+
+  Widget _buildDoubleInputRowWithUnit(String k1, TextEditingController c1, String h1, String k2, TextEditingController c2, String h2) {
+     return Row(children: [
+        Expanded(child: LabeledTextField(controller: c1, hintText: h1, keyboardType: TextInputType.number, showLabel: false, unit: 'mm', focusNode: _focusNodes[k1], onSubmitted: () => _nextFocus(k1))),
+        const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
+        Expanded(child: LabeledTextField(controller: c2, hintText: h2, keyboardType: TextInputType.number, showLabel: false, unit: 'mm', focusNode: _focusNodes[k2], onSubmitted: () => _nextFocus(k2))),
+    ]);
+  }
+
+  Widget _buildTripleInputRowWithUnit(String k1, TextEditingController c1, String h1, String k2, TextEditingController c2, String h2, String k3, TextEditingController c3, String h3) {
+    return Row(children: [
+        Expanded(child: LabeledTextField(controller: c1, hintText: h1, keyboardType: TextInputType.number, showLabel: false, unit: 'mm', focusNode: _focusNodes[k1], onSubmitted: () => _nextFocus(k1))),
+        const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
+        Expanded(child: LabeledTextField(controller: c2, hintText: h2, keyboardType: TextInputType.number, showLabel: false, unit: 'mm', focusNode: _focusNodes[k2], onSubmitted: () => _nextFocus(k2))),
+        const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('・')),
+        Expanded(child: LabeledTextField(controller: c3, hintText: h3, keyboardType: TextInputType.number, showLabel: false, unit: '本', focusNode: _focusNodes[k3], onSubmitted: () => _nextFocus(k3))),
+    ]);
+  }
+
+  Widget _buildQuadInputRow(String k1, TextEditingController c1, String h1, String k2, TextEditingController c2, String h2, String k3, TextEditingController c3, String h3, String k4, TextEditingController c4, String h4) {
+    return Row(children: [
+        Expanded(child: LabeledTextField(controller: c1, hintText: h1, keyboardType: TextInputType.number, showLabel: false, unit: 'mm', focusNode: _focusNodes[k1], onSubmitted: () => _nextFocus(k1))),
+        const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
+        Expanded(child: LabeledTextField(controller: c2, hintText: h2, keyboardType: TextInputType.number, showLabel: false, unit: 'mm', focusNode: _focusNodes[k2], onSubmitted: () => _nextFocus(k2))),
+        const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
+        Expanded(child: LabeledTextField(controller: c3, hintText: h3, keyboardType: TextInputType.number, showLabel: false, unit: 'mm', focusNode: _focusNodes[k3], onSubmitted: () => _nextFocus(k3))),
+        const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('・')),
+        Expanded(child: LabeledTextField(controller: c4, hintText: h4, keyboardType: TextInputType.number, showLabel: false, unit: '本', focusNode: _focusNodes[k4], onSubmitted: () => _nextFocus(k4))),
+    ]);
+  }
+
+  Widget _buildDimensionWithCheckbox(String? label, String k1, TextEditingController c1, String k2, TextEditingController c2, String checkboxLabel, bool checkboxValue, ValueChanged<bool?> onChanged) {
+    final content = Row(children: [
+        Expanded(flex: 2, child: _buildDoubleInputRowWithUnit(k1, c1, '幅', k2, c2, '厚さ')),
+        const SizedBox(width: 8),
+        Expanded(flex: 1, child: Row(children: [Checkbox(value: checkboxValue, onChanged: onChanged), Flexible(child: Text(checkboxLabel, overflow: TextOverflow.ellipsis))])),
+    ]);
+    return label != null ? VerticalInputGroup(label, content) : content;
+  }
+
+  Widget _buildAdditionalPartRow(int i) {
+    return Padding(padding: const EdgeInsets.symmetric(vertical: 4.0), child: Row(children: [
+          SizedBox(width: 80, child: TextField(controller: _additionalPartNameControllers[i], focusNode: _focusNodes['additionalPartName_$i'], onSubmitted: (_) => _nextFocus('additionalPartName_$i'), textInputAction: TextInputAction.next, decoration: const InputDecoration(hintText: '部材名', border: OutlineInputBorder(), isDense: true))),
+          const SizedBox(width: 8),
+          Expanded(child: LabeledTextField(controller: _additionalPartLengthControllers[i], hintText: 'L', keyboardType: TextInputType.number, showLabel: false, unit: 'mm', focusNode: _focusNodes['additionalPartLength_$i'], onSubmitted: () => _nextFocus('additionalPartLength_$i'))),
+          const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
+          Expanded(child: LabeledTextField(controller: _additionalPartWidthControllers[i], hintText: 'W', keyboardType: TextInputType.number, showLabel: false, unit: 'mm', focusNode: _focusNodes['additionalPartWidth_$i'], onSubmitted: () => _nextFocus('additionalPartWidth_$i'))),
+          const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
+          Expanded(child: LabeledTextField(controller: _additionalPartThicknessControllers[i], hintText: 'T', keyboardType: TextInputType.number, showLabel: false, unit: 'mm', focusNode: _focusNodes['additionalPartThickness_$i'], onSubmitted: () => _nextFocus('additionalPartThickness_$i'))),
+          const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('・')),
+          Expanded(child: LabeledTextField(controller: _additionalPartQuantityControllers[i], hintText: '数', keyboardType: TextInputType.number, showLabel: false, unit: '本', focusNode: _focusNodes['additionalPartQuantity_$i'], onSubmitted: () => _nextFocus('additionalPartQuantity_$i'))),
+    ]));
   }
 }
