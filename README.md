@@ -1,1 +1,0 @@
-# kouchuhyo_app
