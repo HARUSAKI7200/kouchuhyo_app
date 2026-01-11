@@ -13,12 +13,12 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '工注票アプリ',
+      title: '輸出工注票作成アプリ',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
         // ▼▼▼ この一行を追加します ▼▼▼
-        fontFamily: 'NotoSerifJP', // 👈 ここを NotoSerifJP に変更
+        fontFamily: 'BIZUDPGothic', // 👈 ここを BIZUDPGothic に変更
       ),
       home: const HomeScreen(), // 最初に表示する画面をHomeScreenに変更
     );

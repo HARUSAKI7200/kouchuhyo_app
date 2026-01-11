@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:kouchuhyo_app/screens/order_form_screen.dart';
 import 'package:intl/intl.dart';
+// ▼▼▼ 追加: モデルクラスのインポート ▼▼▼
+import 'package:kouchuhyo_app/models/kochuhyo_data.dart';
 
 class TemplateInfo {
   final File file;

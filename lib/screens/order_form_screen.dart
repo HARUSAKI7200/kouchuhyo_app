@@ -36,6 +36,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
   late List<String> _orderedFocusNodeKeys;
   
   final TextEditingController _shippingDateController = TextEditingController();
+  final TextEditingController _shippingTimeController = TextEditingController();
   final TextEditingController _issueDateController = TextEditingController();
   final TextEditingController _serialNumberController = TextEditingController(text: 'A-');
   final TextEditingController _kobangoController = TextEditingController();
@@ -169,6 +170,12 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
   bool _isOuterWidthManuallyEdited = false;
   bool _isOuterHeightManuallyEdited = false;
 
+  // ▼▼▼ よく使う国名リスト (AUSTRIAL -> AUSTRALIA に修正) ▼▼▼
+  final List<String> _destinationOptions = const [
+    'USA', 'CHINA', 'KOREA', 'TAIWAN', 'GERMANY', 'AUSTRALIA', 'MEXICO', 
+    'Saudi Arabia', 'UAE', '香港', 'THAI', 'ITALY', 'SPAIN', 'Turkey', 'France', 'INDIA'
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -221,6 +228,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
   // ▼▼▼ ロジック: データ適用 ▼▼▼
   void _applyTemplate(KochuhyoData data) {
     _shippingDateController.text = data.shippingDate;
+    _shippingTimeController.text = data.shippingTime; 
     _issueDateController.text = data.issueDate;
     _serialNumberController.text = data.serialNumber;
     _kobangoController.text = data.kobango;
@@ -348,7 +356,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
     _focusNodes.forEach((_, node) => node.dispose());
     // 全てのコントローラーを破棄
     final allControllers = [
-      _shippingDateController, _issueDateController, _serialNumberController, _kobangoController,
+      _shippingDateController, _shippingTimeController, _issueDateController, _serialNumberController, _kobangoController, 
       _shihomeisakiController, _hinmeiController,
       _productLengthController, _productWidthController, _productHeightController,
       _weightController, _quantityController,
@@ -386,7 +394,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
   // ▼▼▼ フォーカス管理 ▼▼▼
   void _initFocusNodes() {
     _orderedFocusNodeKeys = [
-      'shippingDate', 'issueDate', 'serialNumber', 'kobango', 'shihomeisaki', 'hinmei',
+      'shippingDate', 'shippingTime', 'issueDate', 'serialNumber', 'kobango', 'shihomeisaki', 'hinmei', 
       'productLength', 'productWidth', 'productHeight',
       'material', 'weight', 'quantity', 'desiccantPeriod', 'desiccantCoefficient', 'shippingType', 
       'formType', 'packingForm', 'innerLength', 'innerWidth', 'innerHeight',
@@ -436,6 +444,53 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
     } else {
       _nextFocus(currentKey);
     }
+  }
+
+  // ▼▼▼ 時間選択ロジック ▼▼▼
+  Future<void> _selectTime(TextEditingController controller) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+      builder: (BuildContext context, Widget? child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      final now = DateTime.now();
+      final dt = DateTime(now.year, now.month, now.day, picked.hour, picked.minute);
+      setState(() => controller.text = DateFormat('HH:mm').format(dt));
+      _nextFocus('shippingTime');
+    }
+  }
+
+  // ▼▼▼ 仕向先選択ダイアログ ▼▼▼
+  Future<void> _showDestinationSelectionDialog(BuildContext context) async {
+    await showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return SimpleDialog(
+          title: const Text('仕向先を選択'),
+          children: _destinationOptions.map((String option) {
+            return SimpleDialogOption(
+              onPressed: () {
+                setState(() {
+                  _shihomeisakiController.text = option;
+                });
+                Navigator.pop(context);
+                _nextFocus('shihomeisaki');
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
+                child: Text(option, style: const TextStyle(fontSize: 16)),
+              ),
+            );
+          }).toList(),
+        );
+      },
+    );
   }
 
   // ▼▼▼ 計算ロジック ▼▼▼
@@ -665,7 +720,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
         builder: (context) => DrawingScreen(
           initialElements: _koshitaDrawingElements,
           backgroundImagePath: 'assets/koshita_base.jpg',
-          title: '腰下ベース',
+          title: '腰下図面',
         ),
       ),
     );
@@ -683,7 +738,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
         builder: (context) => DrawingScreen(
           initialElements: _gawaTsumaDrawingElements,
           backgroundImagePath: 'assets/gawa_tsuma_base.jpg',
-          title: '側・妻',
+          title: '側・ツマ',
         ),
       ),
     );
@@ -708,6 +763,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
 
     return KochuhyoData(
       shippingDate: _shippingDateController.text,
+      shippingTime: _shippingTimeController.text, // 追加
       issueDate: _issueDateController.text,
       serialNumber: _serialNumberController.text,
       kobango: _kobangoController.text,
@@ -955,7 +1011,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
       const Tab(text: '基本情報'),
       const Tab(text: '寸法'),
       const Tab(text: '腰下'),
-      const Tab(text: '側・妻'),
+      const Tab(text: '側・ツマ'),
       const Tab(text: '天井'),
       const Tab(text: '梱包材'),
       const Tab(text: '追加部材'),
@@ -1049,9 +1105,22 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
             Expanded(child: LabeledDateInput(label: '発行日', controller: _issueDateController, focusNode: _focusNodes['issueDate'], onTap: () => _selectDate(_issueDateController, 'issueDate'))),
           ],
         ),
+        // ▼▼▼ 追加: 時間指定入力 ▼▼▼
+        LabeledTimeInput(label: '時間指定', controller: _shippingTimeController, focusNode: _focusNodes['shippingTime'], onTap: () => _selectTime(_shippingTimeController)),
+        
         LabeledTextField(label: '整理番号', controller: _serialNumberController, hintText: 'A-100', focusNode: _focusNodes['serialNumber'], onSubmitted: () => _nextFocus('serialNumber')),
         LabeledTextField(label: '工番', controller: _kobangoController, focusNode: _focusNodes['kobango'], onSubmitted: () => _nextFocus('kobango')),
-        LabeledTextField(label: '仕向先', controller: _shihomeisakiController, focusNode: _focusNodes['shihomeisaki'], onSubmitted: () => _nextFocus('shihomeisaki')),
+        // ▼▼▼ 修正: 仕向先選択ダイアログ呼び出しボタン追加 ▼▼▼
+        LabeledTextField(
+          label: '仕向先', 
+          controller: _shihomeisakiController, 
+          focusNode: _focusNodes['shihomeisaki'], 
+          onSubmitted: () => _nextFocus('shihomeisaki'),
+          suffixIcon: IconButton(
+            icon: const Icon(Icons.arrow_drop_down),
+            onPressed: () => _showDestinationSelectionDialog(context),
+          ),
+        ),
         LabeledTextField(label: '品名', controller: _hinmeiController, focusNode: _focusNodes['hinmei'], onSubmitted: () => _nextFocus('hinmei')),
         _buildLabeledTripleInputRow('製品サイズ',
           'productLength', _productLengthController, '長',
@@ -1086,11 +1155,11 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
           Expanded(flex: 2, child: LabeledTextField(label: '結果', controller: _desiccantResultDisplayController, readOnly: true, hintText: '結果', unit: 'kg', showLabel: false)),
         ])),
         const SizedBox(height: 16),
-        RadioGroup(title: "出荷形態", groupValue: _selectedShippingType, options: const ['国内', '輸出'], onChanged: (val) { setState(() => _selectedShippingType = val); _nextFocus('shippingType'); }, focusNode: _focusNodes['shippingType']),
+        CustomRadioGroup(title: "出荷形態", groupValue: _selectedShippingType, options: const ['国内', '輸出'], onChanged: (val) { setState(() => _selectedShippingType = val); _nextFocus('shippingType'); }, focusNode: _focusNodes['shippingType']),
         const SizedBox(height: 16),
-        RadioGroup(title: "形式", groupValue: _selectedFormType, options: _formTypeOptions, onChanged: (val) { setState(() => _selectedFormType = val); _triggerAllCalculations(); _nextFocus('formType'); }, focusNode: _focusNodes['formType']),
+        CustomRadioGroup(title: "形式", groupValue: _selectedFormType, options: _formTypeOptions, onChanged: (val) { setState(() => _selectedFormType = val); _triggerAllCalculations(); _nextFocus('formType'); }, focusNode: _focusNodes['formType']),
         const SizedBox(height: 16),
-        RadioGroup(title: "形状", groupValue: _selectedPackingForm, options: const ['密閉', 'すかし'], onChanged: (val) { setState(() => _selectedPackingForm = val); _nextFocus('packingForm'); }, focusNode: _focusNodes['packingForm']),
+        CustomRadioGroup(title: "形状", groupValue: _selectedPackingForm, options: const ['密閉', 'すかし'], onChanged: (val) { setState(() => _selectedPackingForm = val); _nextFocus('packingForm'); }, focusNode: _focusNodes['packingForm']),
       ],
     );
   }
@@ -1132,7 +1201,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
               const SizedBox(width: 16),
               Expanded(flex: 2, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 const Text('止め方', style: TextStyle(fontSize: 12)),
-                RadioGroup(groupValue: _hFixingMethod, options: const ['釘', 'ボルト'], onChanged: (v) => setState(() => _hFixingMethod = v), focusNode: _focusNodes['hFixingMethod']),
+                CustomRadioGroup(groupValue: _hFixingMethod, options: const ['釘', 'ボルト'], onChanged: (v) => setState(() => _hFixingMethod = v), focusNode: _focusNodes['hFixingMethod']),
               ])),
             ]),
             const SizedBox(height: 8),
@@ -1140,7 +1209,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
         ])),
         
         VerticalInputGroup('すり材 or ゲタ', Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-             RadioGroup(groupValue: _selectedSuriGetaType, options: const ['すり材', 'ゲタ'], onChanged: (v) { setState(() { _selectedSuriGetaType = v; _triggerAllCalculations(); }); }, focusNode: _focusNodes['suriGetaType']),
+             CustomRadioGroup(groupValue: _selectedSuriGetaType, options: const ['すり材', 'ゲタ'], onChanged: (v) { setState(() { _selectedSuriGetaType = v; _triggerAllCalculations(); }); }, focusNode: _focusNodes['suriGetaType']),
               Row(children: [
                 Expanded(child: LabeledTextField(controller: _suriGetaWidthController, keyboardType: TextInputType.number, hintText: '幅', unit: 'mm', showLabel: false, focusNode: _focusNodes['suriGetaWidth'], onSubmitted: () => _nextFocus('suriGetaWidth'))),
                 const Padding(padding: EdgeInsets.symmetric(horizontal: 4.0), child: Text('×')),
@@ -1176,7 +1245,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
           VerticalInputGroup(_loadCalculationMethod == '等分布荷重' ? '許容荷重W[等分布]' : '許容荷重W[中央集中]', 
             LabeledTextField(controller: _allowableLoadDisplayController, readOnly: true, unit: 'kg/本', showLabel: false)),
           
-        RadioGroup(title: "計算方法", groupValue: _loadCalculationMethod, options: const ['非計算', '等分布荷重', '中央集中荷重', '2点集中荷重'], onChanged: (val) {
+        CustomRadioGroup(title: "計算方法", groupValue: _loadCalculationMethod, options: const ['非計算', '等分布荷重', '中央集中荷重', '2点集中荷重'], onChanged: (val) {
           setState(() {
             _loadCalculationMethod = val;
             _allowableLoadDisplayController.clear();
@@ -1239,7 +1308,7 @@ class _OrderFormScreenState extends State<OrderFormScreen> {
     return Column(
       children: [
         VerticalInputGroup('外板', LabeledTextField(controller: _sideBoardThicknessController, keyboardType: TextInputType.number, unit: 'mm', showLabel: false, focusNode: _focusNodes['sideBoardThickness'], onSubmitted: () => _nextFocus('sideBoardThickness'))),
-        RadioGroup(title: "かまち種類", groupValue: _selectedKamachiType, options: const ['かまち25', 'かまち40'], onChanged: _updateKamachiDimensions, focusNode: _focusNodes['kamachiType']),
+        CustomRadioGroup(title: "かまち種類", groupValue: _selectedKamachiType, options: const ['かまち25', 'かまち40'], onChanged: _updateKamachiDimensions, focusNode: _focusNodes['kamachiType']),
         VerticalInputGroup('上かまち', _buildDoubleInputRowWithUnit('upperKamachiWidth', _upperKamachiWidthController, '幅', 'upperKamachiThickness', _upperKamachiThicknessController, '厚さ')),
         VerticalInputGroup('下かまち', _buildDoubleInputRowWithUnit('lowerKamachiWidth', _lowerKamachiWidthController, '幅', 'lowerKamachiThickness', _lowerKamachiThicknessController, '厚さ')),
         VerticalInputGroup('支柱', _buildDoubleInputRowWithUnit('pillarWidth', _pillarWidthController, '幅', 'pillarThickness', _pillarThicknessController, '厚さ')),

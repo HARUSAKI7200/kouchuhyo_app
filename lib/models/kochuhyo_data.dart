@@ -74,7 +74,7 @@ class DimensionParser {
 /// 工注票の全データを保持するクラス
 class KochuhyoData {
   // 基本情報
-  final String shippingDate, issueDate, serialNumber, kobango, shihomeisaki, hinmei;
+  final String shippingDate, shippingTime, issueDate, serialNumber, kobango, shihomeisaki, hinmei; // shippingTimeを追加
   final String productLength, productWidth, productHeight;
   final String weight, quantity;
   final String shippingType, packingForm, formType, material;
@@ -123,7 +123,9 @@ class KochuhyoData {
   final List<Map<String, dynamic>> gawaTsumaDrawingElements;
 
   KochuhyoData({
-    required this.shippingDate, required this.issueDate, required this.serialNumber, required this.kobango,
+    required this.shippingDate, 
+    required this.shippingTime, // 追加
+    required this.issueDate, required this.serialNumber, required this.kobango,
     required this.shihomeisaki, required this.hinmei,
     required this.productLength, required this.productWidth, required this.productHeight,
     required this.weight, required this.quantity,
@@ -168,6 +170,7 @@ class KochuhyoData {
 
     return {
       'shippingDate': shippingDate,
+      'shippingTime': shippingTime, // 追加
       'issueDate': issueDate,
       'serialNumber': serialNumber,
       'kobango': kobango,
@@ -267,6 +270,7 @@ class KochuhyoData {
   factory KochuhyoData.fromJson(Map<String, dynamic> json) {
     return KochuhyoData(
       shippingDate: json['shippingDate'] ?? '',
+      shippingTime: json['shippingTime'] ?? '', // 追加
       issueDate: json['issueDate'] ?? '',
       serialNumber: json['serialNumber'] ?? '',
       kobango: json['kobango'] ?? '',

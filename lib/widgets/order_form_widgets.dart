@@ -15,6 +15,7 @@ class LabeledTextField extends StatelessWidget {
   final bool showLabel;
   final FocusNode? focusNode;
   final VoidCallback? onSubmitted;
+  final Widget? suffixIcon; // ▼▼▼ 追加 ▼▼▼
 
   const LabeledTextField({
     super.key,
@@ -28,6 +29,7 @@ class LabeledTextField extends StatelessWidget {
     this.showLabel = true,
     this.focusNode,
     this.onSubmitted,
+    this.suffixIcon, // ▼▼▼ 追加 ▼▼▼
   });
 
   @override
@@ -55,12 +57,13 @@ class LabeledTextField extends StatelessWidget {
                 isDense: true,
                 filled: true,
                 fillColor: readOnly ? Colors.grey[200] : Colors.transparent,
+                suffixIcon: suffixIcon, // ▼▼▼ 追加 ▼▼▼
               ),
             ),
           ),
           if (unit != null) ...[
             const SizedBox(width: 8),
-            Text(unit, style: TextStyle(color: Colors.grey[700])),
+            Text(unit!, style: TextStyle(color: Colors.grey[700])),
           ]
         ],
       ),
@@ -101,6 +104,52 @@ class LabeledDateInput extends StatelessWidget {
                 textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
                   hintText: 'yyyy/MM/dd',
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  isDense: true,
+                ),
+              ),
+            ),
+          )),
+        ],
+      ),
+    );
+  }
+}
+
+/// ラベル付き時間入力フィールド
+class LabeledTimeInput extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final FocusNode? focusNode;
+  final VoidCallback onTap;
+
+  const LabeledTimeInput({
+    super.key,
+    required this.label,
+    required this.controller,
+    this.focusNode,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        children: [
+          SizedBox(width: 80, child: Text(label)),
+          const SizedBox(width: 8),
+          Expanded(child: GestureDetector(
+            onTap: onTap,
+            child: AbsorbPointer(
+              child: TextField(
+                controller: controller,
+                readOnly: true,
+                focusNode: focusNode,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  hintText: 'HH:mm',
                   border: OutlineInputBorder(),
                   contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   isDense: true,
@@ -204,15 +253,14 @@ class DimensionDropdown extends StatelessWidget {
   }
 }
 
-/// ラジオボタングループ
-class RadioGroup extends StatelessWidget {
+class CustomRadioGroup extends StatelessWidget {
   final String? title;
   final String? groupValue;
   final List<String> options;
   final ValueChanged<String?> onChanged;
   final FocusNode? focusNode;
 
-  const RadioGroup({
+  const CustomRadioGroup({
     super.key,
     this.title,
     required this.groupValue,
@@ -311,7 +359,7 @@ class DrawingPreview extends StatelessWidget {
                 : Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: Image.memory(
-                      imageBytes,
+                      imageBytes!,
                       fit: BoxFit.contain,
                       errorBuilder: (context, error, stackTrace) =>
                           const Center(child: Text('画像表示エラー')),

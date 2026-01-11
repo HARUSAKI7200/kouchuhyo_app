@@ -6,75 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:kouchuhyo_app/screens/order_form_screen.dart';
-
-// DimensionParser クラス (変更なし)
-class DimensionParser {
-  final String rawString;
-  String l = '';
-  String w = '';
-  String t = '';
-  String qty = '';
-
-  DimensionParser(this.rawString) {
-    _parse();
-  }
-
-  void _parse() {
-    if (rawString.isEmpty) return;
-
-    String remainingString = rawString;
-
-    final qtyMatch = RegExp(r'[xXх×・]\s*(\d+)\s*本$').firstMatch(remainingString);
-    if (qtyMatch != null) {
-      qty = qtyMatch.group(1)!;
-      remainingString = remainingString.substring(0, qtyMatch.start).trim();
-    } else {
-      final qtyOnlyMatch = RegExp(r'^(\d+)\s*本$').firstMatch(remainingString);
-        if (qtyOnlyMatch != null) {
-            qty = qtyOnlyMatch.group(1)!;
-            remainingString = "";
-        }
-    }
-
-    final lMatch = RegExp(r'[lL]\s*(\d+(?:\.\d+)?)').firstMatch(remainingString);
-    if (lMatch != null) {
-      l = lMatch.group(1)!;
-      remainingString = remainingString.replaceFirst(lMatch.group(0)!, '').trim();
-    }
-
-    final wMatch = RegExp(r'[wW]\s*(\d+(?:\.\d+)?)').firstMatch(remainingString);
-    if (wMatch != null) {
-      w = wMatch.group(1)!;
-      remainingString = remainingString.replaceFirst(wMatch.group(0)!, '').trim();
-    }
-
-    final tMatch = RegExp(r'[tT]\s*(\d+(?:\.\d+)?)').firstMatch(remainingString);
-    if (tMatch != null) {
-      t = tMatch.group(1)!;
-      remainingString = remainingString.replaceFirst(tMatch.group(0)!, '').trim();
-    }
-
-    remainingString = remainingString.replaceAll(RegExp(r'\s*[xXх×]\s*'), ' ').trim();
-    final remainingParts = remainingString.split(RegExp(r'\s+')).where((s) => s.isNotEmpty).toList();
-
-    if (l.isEmpty && remainingParts.isNotEmpty) {
-      l = RegExp(r'^\d+(?:\.\d+)?$').hasMatch(remainingParts[0]) ? remainingParts.removeAt(0) : '';
-    }
-    if (w.isEmpty && remainingParts.isNotEmpty) {
-      w = RegExp(r'^\d+(?:\.\d+)?$').hasMatch(remainingParts[0]) ? remainingParts.removeAt(0) : '';
-    }
-    if (t.isEmpty && remainingParts.isNotEmpty) {
-      t = RegExp(r'^\d+(?:\.\d+)?$').hasMatch(remainingParts[0]) ? remainingParts.removeAt(0) : '';
-    }
-    if (l.isEmpty && w.isEmpty && t.isEmpty && qty.isEmpty) {
-        final tOnlyMatch = RegExp(r'^(\d+(?:\.\d+)?)\s*t$').firstMatch(rawString.toLowerCase());
-        if (tOnlyMatch != null) {
-            t = tOnlyMatch.group(1)!;
-        }
-    }
-  }
-}
+// ▼▼▼ データモデルのインポート ▼▼▼
+import 'package:kouchuhyo_app/models/kochuhyo_data.dart';
 
 class PrintPreviewScreen extends StatelessWidget {
   final KochuhyoData data;
@@ -103,9 +36,9 @@ class PrintPreviewScreen extends StatelessWidget {
   Future<Uint8List> _generatePdf(KochuhyoData data) async {
     final doc = pw.Document();
 
-    final fontData = await rootBundle.load("assets/fonts/NotoSerifJP-Regular.ttf");
+    final fontData = await rootBundle.load("assets/fonts/BIZUDPGothic-Regular.ttf");
     final ttf = pw.Font.ttf(fontData);
-    final fontBoldData = await rootBundle.load("assets/fonts/NotoSerifJP-Bold.ttf");
+    final fontBoldData = await rootBundle.load("assets/fonts/BIZUDPGothic-Bold.ttf");
     final ttfBold = pw.Font.ttf(fontBoldData);
 
     final baseTheme = pw.ThemeData.withFont(base: ttf, bold: ttfBold);
@@ -149,19 +82,19 @@ class PrintPreviewScreen extends StatelessWidget {
   pw.Widget _buildSingleSetContentArea(pw.Context context, KochuhyoData data, pw.Font ttfBold, pw.Font ttfRegular) {
     const double oneCm = 1 * PdfPageFormat.cm;
     final baseFontSize = oneCm * 0.28;
-    final mainTextStyle = pw.TextStyle(fontSize: baseFontSize, font: ttfBold, fontWeight: pw.FontWeight.bold); //修正: ttfBold をデフォルトフォントに
+    final mainTextStyle = pw.TextStyle(fontSize: baseFontSize, font: ttfBold, fontWeight: pw.FontWeight.bold); 
     final boldTextStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize, fontWeight: pw.FontWeight.bold);
     final headerTextStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize * 1.2, fontWeight: pw.FontWeight.bold);
     final titleTextStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize * 2.0, fontWeight: pw.FontWeight.bold);
     final materialStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize * 1.1, color: PdfColors.red, fontWeight: pw.FontWeight.bold);
     const double tableCellPadding = 1.0;
     const double sectionSpacing = 0.5 * PdfPageFormat.mm;
-    // ★★★【修正】腰下と側妻で高さが異なるため、固定の drawingHeight は削除 ★★★
 
     final commonContentTextStyle = mainTextStyle.copyWith(fontSize: baseFontSize * 1.15, fontWeight: pw.FontWeight.bold);
     final commonContentBoldStyle = boldTextStyle.copyWith(fontSize: baseFontSize * 1.15, fontWeight: pw.FontWeight.bold);
 
-    final shippingDateTextStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize * 1.8, fontWeight: pw.FontWeight.bold);
+    // 文字サイズを少し小さく調整 (1.8 -> 1.5)
+    final shippingDateTextStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize * 1.5, fontWeight: pw.FontWeight.bold);
     final issueDateTextStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize * 1.2, fontWeight: pw.FontWeight.bold);
     final serialNumberTextStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize * 1.8, fontWeight: pw.FontWeight.bold);
 
@@ -199,7 +132,6 @@ class PrintPreviewScreen extends StatelessWidget {
       ]
     );
 
-    // ★★★【修正】高さを引数で受け取れるように変更 ★★★
     pw.Widget _buildDrawing(Uint8List? imageBytes, String placeholder, double height) {
       return pw.Container(
           height: height,
@@ -212,13 +144,41 @@ class PrintPreviewScreen extends StatelessWidget {
         );
     }
 
+    // ▼▼▼ 修正: scaleDown オプションを追加 ▼▼▼
     pw.Widget _buildBasicInfoItem(
       String label,
       String value, {
       pw.TextStyle? valueStyle,
       bool isMaterial = false,
       double labelWidth = 40,
+      bool scaleDown = false, // 自動縮小オプション
     }) {
+      final labelStyle = mainTextStyle.copyWith(
+        color: PdfColors.black,
+        fontSize: baseFontSize * 1.5,
+        fontWeight: pw.FontWeight.bold,
+      );
+      final valueTextStyle = (isMaterial ? materialStyle : (valueStyle ?? boldTextStyle)).copyWith(fontSize: baseFontSize * 1.5);
+
+      if (scaleDown) {
+        // 自動縮小モード: Row + Expanded + FittedBox を使用
+        return pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.end,
+          children: [
+            pw.Text('$label:', style: labelStyle),
+            pw.SizedBox(width: 4),
+            pw.Expanded(
+              child: pw.FittedBox(
+                fit: pw.BoxFit.scaleDown, // 枠に収まらない場合のみ縮小
+                alignment: pw.Alignment.centerLeft,
+                child: pw.Text(value, style: valueTextStyle),
+              ),
+            ),
+          ],
+        );
+      }
+
+      // 通常モード: RichText でテキストを連結
       return pw.Align(
         alignment: pw.Alignment.topLeft,
         child: pw.RichText(
@@ -226,15 +186,11 @@ class PrintPreviewScreen extends StatelessWidget {
             children: [
               pw.TextSpan(
                 text: '$label:',
-                style: mainTextStyle.copyWith(
-                  color: PdfColors.black,
-                  fontSize: baseFontSize * 1.5,
-                  fontWeight: pw.FontWeight.bold,
-                ),
+                style: labelStyle,
               ),
               pw.TextSpan(
                 text: value,
-                style: (isMaterial ? materialStyle : (valueStyle ?? boldTextStyle)).copyWith(fontSize: baseFontSize * 1.5),
+                style: valueTextStyle,
               ),
             ],
           ),
@@ -601,13 +557,12 @@ class PrintPreviewScreen extends StatelessWidget {
     List<pw.Widget> _buildAdditionalPartsItems(KochuhyoData data, pw.TextStyle textStyle, pw.TextStyle boldStyle) {
       final List<pw.Widget> widgets = [];
       const double localSectionSpacing = 0.5 * PdfPageFormat.mm;
-      // ご提供のファイルの古い表示条件を維持
       for (int i = 0; i < data.additionalParts.length; i++) {
         final part = data.additionalParts[i];
         if (part['name']!.isNotEmpty && (DimensionParser(part['dims']!).l.isNotEmpty || DimensionParser(part['dims']!).w.isNotEmpty || DimensionParser(part['dims']!).t.isNotEmpty || DimensionParser(part['dims']!).qty.isNotEmpty)) {
           final parsedPart = DimensionParser(part['dims']!);
           widgets.add(
-            pw.RichText( // 各追加部材アイテムも左寄せにするため pw.Align は不要 (親の Column で制御)
+            pw.RichText( 
               text: pw.TextSpan(
                 children: [
                   pw.TextSpan(text: '${part['name']!}: ', style: boldStyle.copyWith(fontWeight: pw.FontWeight.bold)),
@@ -656,16 +611,20 @@ class PrintPreviewScreen extends StatelessWidget {
                 ],
               ),
             ),
+            // 左上に配置: 出荷日 & 時間指定
             pw.Align(
               alignment: pw.Alignment.topLeft,
-              child: pw.SizedBox(
-                width: PdfPageFormat.a4.width / 2 - (1.0 * PdfPageFormat.cm) / 2,
-                child: pw.Align(
-                  alignment: pw.Alignment.center,
-                  child: pw.Text('出荷日: ${data.shippingDate}', style: shippingDateTextStyle.copyWith(fontWeight: pw.FontWeight.bold)),
-                ),
-              ),
+              child: pw.Row(
+                children: [
+                   pw.Text('出荷日: ${data.shippingDate}', style: shippingDateTextStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                   if (data.shippingTime.isNotEmpty) ...[
+                     pw.SizedBox(width: 10),
+                     pw.Text('時間指定: ${data.shippingTime}', style: shippingDateTextStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                   ]
+                ]
+              )
             ),
+            
             pw.Align(
               alignment: pw.Alignment.topRight,
               child: pw.Padding(
@@ -694,9 +653,10 @@ class PrintPreviewScreen extends StatelessWidget {
               child: _buildBasicInfoItem('仕向先', data.shihomeisaki, labelWidth: 18 * PdfPageFormat.mm),
             ),
             pw.SizedBox(width: sectionSpacing * 2),
+            // ▼▼▼ 修正: 品名を自動縮小 (scaleDown: true) ▼▼▼
             pw.SizedBox(
               width: 4.5 * PdfPageFormat.cm,
-              child: _buildBasicInfoItem('品名', data.hinmei, labelWidth: 15 * PdfPageFormat.mm),
+              child: _buildBasicInfoItem('品名', data.hinmei, labelWidth: 15 * PdfPageFormat.mm, scaleDown: true),
             ),
             pw.SizedBox(width: sectionSpacing * 2),
             pw.SizedBox(
@@ -727,7 +687,6 @@ class PrintPreviewScreen extends StatelessWidget {
                   children: [
                     dimensionsTable,
                     pw.SizedBox(height: sectionSpacing * 2),
-                    // ★★★【修正】高さを 2.8cm -> 3.4cm に変更 ★★★
                     _buildDrawing(data.koshitaImageBytes, '腰下図面なし', 3.4 * PdfPageFormat.cm),
                     pw.Text('腰下・負荷床材・根止め', style: headerTextStyle.copyWith(fontWeight: pw.FontWeight.bold)),
                     pw.SizedBox(height: sectionSpacing),
@@ -758,7 +717,6 @@ class PrintPreviewScreen extends StatelessWidget {
                       ],
                     ),
                     pw.SizedBox(height: sectionSpacing * 2),
-                    // ★★★【修正】高さを引数で指定（元のサイズ） ★★★
                     _buildDrawing(data.gawaTsumaImageBytes, '側・妻図面なし', 2.8 * PdfPageFormat.cm),
                     pw.Text('側・妻', style: headerTextStyle.copyWith(fontWeight: pw.FontWeight.bold)),
                     pw.SizedBox(height: sectionSpacing),
@@ -768,8 +726,6 @@ class PrintPreviewScreen extends StatelessWidget {
                     pw.SizedBox(height: sectionSpacing),
                     ..._buildTenjoItems(data, commonContentTextStyle, commonContentBoldStyle),
                     pw.SizedBox(height: sectionSpacing * 2),
-                    // 「追加部材」セクションのヘッダーは常に表示し、左寄せにします。
-                    // _buildAdditionalPartsItems が空のリストを返した場合でもヘッダーは表示されます。
                     pw.Text('追加部材', style: headerTextStyle.copyWith(fontWeight: pw.FontWeight.bold)),
                     pw.SizedBox(height: sectionSpacing),
                     ..._buildAdditionalPartsItems(data, commonContentTextStyle, commonContentBoldStyle),

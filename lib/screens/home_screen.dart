@@ -5,7 +5,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:kouchuhyo_app/screens/order_form_screen.dart';
 import 'package:kouchuhyo_app/screens/template_list_screen.dart';
+// ▼▼▼ 設定画面のインポート ▼▼▼
+import 'package:kouchuhyo_app/screens/settings_screen.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:kouchuhyo_app/models/kochuhyo_data.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -126,12 +129,22 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('工注票アプリ ホーム'),
+        title: const Text('ホーム'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadHistory,
             tooltip: '履歴を再読み込み',
+          ),
+          // ▼▼▼ 追加: 設定ボタン ▼▼▼
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
+              );
+            },
+            tooltip: '設定',
           ),
         ],
       ),
@@ -213,7 +226,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           itemCount: _historyList.length,
                           itemBuilder: (context, index) {
                             final historyData = _historyList[index];
-                            // ▼▼▼【追加】製品サイズ文字列の生成 ▼▼▼
                             final productSize = (historyData.productLength.isNotEmpty || historyData.productWidth.isNotEmpty || historyData.productHeight.isNotEmpty)
                                 ? '製品サイズ: ${historyData.productLength}×${historyData.productWidth}×${historyData.productHeight}'
                                 : '製品サイズ: 未入力';
@@ -228,7 +240,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          // ▼▼▼【変更】表示内容 ▼▼▼
                                           Text(
                                             '工番: ${historyData.kobango.isNotEmpty ? historyData.kobango : '未入力'}',
                                             style: const TextStyle(fontWeight: FontWeight.bold),
