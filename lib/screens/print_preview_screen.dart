@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-// ▼▼▼ データモデルのインポート ▼▼▼
 import 'package:kouchuhyo_app/models/kochuhyo_data.dart';
 
 class PrintPreviewScreen extends StatelessWidget {
@@ -36,9 +35,10 @@ class PrintPreviewScreen extends StatelessWidget {
   Future<Uint8List> _generatePdf(KochuhyoData data) async {
     final doc = pw.Document();
 
-    final fontData = await rootBundle.load("assets/fonts/BIZUDPGothic-Regular.ttf");
+    // ▼▼▼ 修正: ファイル名を NotoSerifJP (明朝) に戻す ▼▼▼
+    final fontData = await rootBundle.load("assets/fonts/NotoSerifJP-Regular.ttf");
     final ttf = pw.Font.ttf(fontData);
-    final fontBoldData = await rootBundle.load("assets/fonts/BIZUDPGothic-Bold.ttf");
+    final fontBoldData = await rootBundle.load("assets/fonts/NotoSerifJP-Bold.ttf");
     final ttfBold = pw.Font.ttf(fontBoldData);
 
     final baseTheme = pw.ThemeData.withFont(base: ttf, bold: ttfBold);
@@ -82,21 +82,24 @@ class PrintPreviewScreen extends StatelessWidget {
   pw.Widget _buildSingleSetContentArea(pw.Context context, KochuhyoData data, pw.Font ttfBold, pw.Font ttfRegular) {
     const double oneCm = 1 * PdfPageFormat.cm;
     final baseFontSize = oneCm * 0.28;
-    final mainTextStyle = pw.TextStyle(fontSize: baseFontSize, font: ttfBold, fontWeight: pw.FontWeight.bold); 
-    final boldTextStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize, fontWeight: pw.FontWeight.bold);
-    final headerTextStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize * 1.2, fontWeight: pw.FontWeight.bold);
-    final titleTextStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize * 2.0, fontWeight: pw.FontWeight.bold);
-    final materialStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize * 1.1, color: PdfColors.red, fontWeight: pw.FontWeight.bold);
+    
+    // ▼▼▼ 修正: fontWeight: bold を削除 (ttfBold自体が太字なので不要) ▼▼▼
+    final mainTextStyle = pw.TextStyle(fontSize: baseFontSize, font: ttfBold); 
+    final boldTextStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize);
+    final headerTextStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize * 1.2);
+    final titleTextStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize * 2.0);
+    final materialStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize * 1.1, color: PdfColors.red);
+    
     const double tableCellPadding = 1.0;
     const double sectionSpacing = 0.5 * PdfPageFormat.mm;
 
-    final commonContentTextStyle = mainTextStyle.copyWith(fontSize: baseFontSize * 1.15, fontWeight: pw.FontWeight.bold);
-    final commonContentBoldStyle = boldTextStyle.copyWith(fontSize: baseFontSize * 1.15, fontWeight: pw.FontWeight.bold);
+    // ▼▼▼ 修正: copyWith時も fontWeight を指定しない ▼▼▼
+    final commonContentTextStyle = mainTextStyle.copyWith(fontSize: baseFontSize * 1.15);
+    final commonContentBoldStyle = boldTextStyle.copyWith(fontSize: baseFontSize * 1.15);
 
-    // 文字サイズを少し小さく調整 (1.8 -> 1.5)
-    final shippingDateTextStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize * 1.5, fontWeight: pw.FontWeight.bold);
-    final issueDateTextStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize * 1.2, fontWeight: pw.FontWeight.bold);
-    final serialNumberTextStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize * 1.8, fontWeight: pw.FontWeight.bold);
+    final shippingDateTextStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize * 1.8);
+    final issueDateTextStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize * 1.2);
+    final serialNumberTextStyle = pw.TextStyle(font: ttfBold, fontSize: baseFontSize * 1.8);
 
     final pw.Widget dimensionsTable = pw.Table(
       border: pw.TableBorder.all(color: PdfColors.grey, width: 0.5),
@@ -107,25 +110,25 @@ class PrintPreviewScreen extends StatelessWidget {
       children: [
         pw.TableRow(
           children: [
-            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text('内寸', style: boldTextStyle.copyWith(fontSize: baseFontSize * 1.5, fontWeight: pw.FontWeight.bold))),
-            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text(data.innerLength, style: boldTextStyle.copyWith(fontSize: baseFontSize * 1.5, fontWeight: pw.FontWeight.bold))),
-            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text(data.innerWidth, style: boldTextStyle.copyWith(fontSize: baseFontSize * 1.5, fontWeight: pw.FontWeight.bold))),
-            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text(data.innerHeight, style: boldTextStyle.copyWith(fontSize: baseFontSize * 1.5, fontWeight: pw.FontWeight.bold))),
+            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text('内寸', style: boldTextStyle.copyWith(fontSize: baseFontSize * 1.5))),
+            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text(data.innerLength, style: boldTextStyle.copyWith(fontSize: baseFontSize * 1.5))),
+            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text(data.innerWidth, style: boldTextStyle.copyWith(fontSize: baseFontSize * 1.5))),
+            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text(data.innerHeight, style: boldTextStyle.copyWith(fontSize: baseFontSize * 1.5))),
           ]
         ),
         pw.TableRow(
           children: [
-            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text('外寸', style: boldTextStyle.copyWith(fontWeight: pw.FontWeight.bold))),
-            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text(data.outerLength, style: boldTextStyle.copyWith(fontWeight: pw.FontWeight.bold))),
-            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text(data.outerWidth, style: boldTextStyle.copyWith(fontWeight: pw.FontWeight.bold))),
-            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text(data.outerHeight, style: boldTextStyle.copyWith(fontWeight: pw.FontWeight.bold))),
+            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text('外寸', style: boldTextStyle)),
+            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text(data.outerLength, style: boldTextStyle)),
+            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text(data.outerWidth, style: boldTextStyle)),
+            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text(data.outerHeight, style: boldTextStyle)),
           ]
         ),
         pw.TableRow(
           children: [
-            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text('立米', style: boldTextStyle.copyWith(fontWeight: pw.FontWeight.bold))),
-            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text(data.packagingVolume, style: boldTextStyle.copyWith(fontWeight: pw.FontWeight.bold))),
-            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text('m³', style: boldTextStyle.copyWith(fontWeight: pw.FontWeight.bold))),
+            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text('立米', style: boldTextStyle)),
+            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text(data.packagingVolume, style: boldTextStyle)),
+            pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text('m³', style: boldTextStyle)),
             pw.Padding(padding: const pw.EdgeInsets.all(tableCellPadding), child: pw.Text('', style: boldTextStyle)),
           ]
         ),
@@ -144,24 +147,21 @@ class PrintPreviewScreen extends StatelessWidget {
         );
     }
 
-    // ▼▼▼ 修正: scaleDown オプションを追加 ▼▼▼
     pw.Widget _buildBasicInfoItem(
       String label,
       String value, {
       pw.TextStyle? valueStyle,
       bool isMaterial = false,
       double labelWidth = 40,
-      bool scaleDown = false, // 自動縮小オプション
+      bool scaleDown = false,
     }) {
       final labelStyle = mainTextStyle.copyWith(
         color: PdfColors.black,
         fontSize: baseFontSize * 1.5,
-        fontWeight: pw.FontWeight.bold,
       );
       final valueTextStyle = (isMaterial ? materialStyle : (valueStyle ?? boldTextStyle)).copyWith(fontSize: baseFontSize * 1.5);
 
       if (scaleDown) {
-        // 自動縮小モード: Row + Expanded + FittedBox を使用
         return pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.end,
           children: [
@@ -169,7 +169,7 @@ class PrintPreviewScreen extends StatelessWidget {
             pw.SizedBox(width: 4),
             pw.Expanded(
               child: pw.FittedBox(
-                fit: pw.BoxFit.scaleDown, // 枠に収まらない場合のみ縮小
+                fit: pw.BoxFit.scaleDown,
                 alignment: pw.Alignment.centerLeft,
                 child: pw.Text(value, style: valueTextStyle),
               ),
@@ -178,7 +178,6 @@ class PrintPreviewScreen extends StatelessWidget {
         );
       }
 
-      // 通常モード: RichText でテキストを連結
       return pw.Align(
         alignment: pw.Alignment.topLeft,
         child: pw.RichText(
@@ -212,7 +211,6 @@ class PrintPreviewScreen extends StatelessWidget {
               style: mainTextStyle.copyWith(
                 color: PdfColors.black,
                 fontSize: baseFontSize * 1.5,
-                fontWeight: pw.FontWeight.bold,
               ),
             ),
             pw.TextSpan(
@@ -226,7 +224,7 @@ class PrintPreviewScreen extends StatelessWidget {
 
     List<pw.Widget> _buildCombinedDimensionItems(KochuhyoData data, pw.TextStyle textStyle, pw.TextStyle boldStyle) {
       final List<pw.Widget> widgets = [];
-      const double localSectionSpacing = 0.5 * PdfPageFormat.mm;
+      // sectionSpacing は既に定義済み
 
       widgets.add(
         pw.Row(
@@ -237,8 +235,8 @@ class PrintPreviewScreen extends StatelessWidget {
               child: pw.RichText(
                 text: pw.TextSpan(
                   children: [
-                    pw.TextSpan(text: '滑材: ', style: boldStyle.copyWith(fontWeight: pw.FontWeight.bold)),
-                    pw.TextSpan(text: '${data.skidWidth} × ${data.skidThickness}・${data.skidQuantity}本', style: textStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                    pw.TextSpan(text: '滑材: ', style: boldStyle),
+                    pw.TextSpan(text: '${data.skidWidth} × ${data.skidThickness}・${data.skidQuantity}本', style: textStyle),
                   ]
                 )
               ),
@@ -248,8 +246,8 @@ class PrintPreviewScreen extends StatelessWidget {
               child: pw.RichText(
                 text: pw.TextSpan(
                   children: [
-                    pw.TextSpan(text: 'H(${data.hFixingMethod}): ', style: boldStyle.copyWith(fontWeight: pw.FontWeight.bold)),
-                    pw.TextSpan(text: '${data.hWidth} × ${data.hThickness}', style: textStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                    pw.TextSpan(text: 'H(${data.hFixingMethod}): ', style: boldStyle),
+                    pw.TextSpan(text: '${data.hWidth} × ${data.hThickness}', style: textStyle),
                   ]
                 )
               ),
@@ -257,7 +255,7 @@ class PrintPreviewScreen extends StatelessWidget {
           ],
         )
       );
-      widgets.add(pw.SizedBox(height: localSectionSpacing));
+      widgets.add(pw.SizedBox(height: sectionSpacing));
 
       widgets.add(
         pw.Row(
@@ -268,11 +266,11 @@ class PrintPreviewScreen extends StatelessWidget {
               child: pw.RichText(
                 text: pw.TextSpan(
                   children: [
-                    pw.TextSpan(text: '${data.suriGetaType}: ', style: boldStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                    pw.TextSpan(text: '${data.suriGetaType}: ', style: boldStyle),
                     pw.TextSpan(
                       text: '${data.suriGetaWidth} × ${data.suriGetaThickness}' +
                           (data.suriGetaType == 'ゲタ' ? ' ×${data.getaQuantity}本' : ''),
-                      style: textStyle.copyWith(fontWeight: pw.FontWeight.bold)
+                      style: textStyle
                     ),
                   ]
                 )
@@ -283,10 +281,10 @@ class PrintPreviewScreen extends StatelessWidget {
               child: pw.RichText(
                 text: pw.TextSpan(
                   children: [
-                    pw.TextSpan(text: '床板: ', style: boldStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                    pw.TextSpan(text: '床板: ', style: boldStyle),
                     pw.TextSpan(
                       text: '${data.floorBoardThickness}${data.isFloorBoardShort ? " (地板短め)" : ""}',
-                      style: textStyle.copyWith(fontWeight: pw.FontWeight.bold)
+                      style: textStyle
                     ),
                   ]
                 )
@@ -295,19 +293,19 @@ class PrintPreviewScreen extends StatelessWidget {
           ],
         )
       );
-      widgets.add(pw.SizedBox(height: localSectionSpacing));
+      widgets.add(pw.SizedBox(height: sectionSpacing));
 
       widgets.add(
         pw.RichText(
           text: pw.TextSpan(
             children: [
-              pw.TextSpan(text: '負荷床材: ', style: boldStyle.copyWith(fontWeight: pw.FontWeight.bold)),
-              pw.TextSpan(text: '${data.loadBearingMaterialWidth} × ${data.loadBearingMaterialThickness}・${data.loadBearingMaterialQuantity}本', style: textStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+              pw.TextSpan(text: '負荷床材: ', style: boldStyle),
+              pw.TextSpan(text: '${data.loadBearingMaterialWidth} × ${data.loadBearingMaterialThickness}・${data.loadBearingMaterialQuantity}本', style: textStyle),
             ]
           )
         )
       );
-      widgets.add(pw.SizedBox(height: localSectionSpacing));
+      widgets.add(pw.SizedBox(height: sectionSpacing));
 
       List<pw.Widget> rootStopRowsToAdd = [];
       for (int i = 0; i < data.rootStops.length; i += 2) {
@@ -324,8 +322,8 @@ class PrintPreviewScreen extends StatelessWidget {
                 child: pw.RichText(
                   text: pw.TextSpan(
                     children: [
-                      pw.TextSpan(text: '根止め: ', style: boldStyle.copyWith(fontWeight: pw.FontWeight.bold)),
-                      pw.TextSpan(text: '${parsedRootStop1.l} × ${parsedRootStop1.w} × ${parsedRootStop1.t}・${parsedRootStop1.qty}本', style: textStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                      pw.TextSpan(text: '根止め: ', style: boldStyle),
+                      pw.TextSpan(text: '${parsedRootStop1.l} × ${parsedRootStop1.w} × ${parsedRootStop1.t}・${parsedRootStop1.qty}本', style: textStyle),
                     ]
                   )
                 ),
@@ -344,8 +342,8 @@ class PrintPreviewScreen extends StatelessWidget {
                 child: pw.RichText(
                   text: pw.TextSpan(
                     children: [
-                      pw.TextSpan(text: '根止め: ', style: boldStyle.copyWith(fontWeight: pw.FontWeight.bold)),
-                      pw.TextSpan(text: '${parsedRootStop2.l} × ${parsedRootStop2.w} × ${parsedRootStop2.t}・${parsedRootStop2.qty}本', style: textStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                      pw.TextSpan(text: '根止め: ', style: boldStyle),
+                      pw.TextSpan(text: '${parsedRootStop2.l} × ${parsedRootStop2.w} × ${parsedRootStop2.t}・${parsedRootStop2.qty}本', style: textStyle),
                     ]
                   )
                 ),
@@ -360,12 +358,12 @@ class PrintPreviewScreen extends StatelessWidget {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 rootStop1Widget ?? pw.Expanded(flex: 1, child: pw.Container()),
-                pw.SizedBox(width: localSectionSpacing * 4),
+                pw.SizedBox(width: sectionSpacing * 4),
                 rootStop2Widget ?? pw.Expanded(flex: 1, child: pw.Container()),
               ],
             )
           );
-          rootStopRowsToAdd.add(pw.SizedBox(height: localSectionSpacing));
+          rootStopRowsToAdd.add(pw.SizedBox(height: sectionSpacing));
         }
       }
       widgets.addAll(rootStopRowsToAdd);
@@ -374,7 +372,7 @@ class PrintPreviewScreen extends StatelessWidget {
 
     List<pw.Widget> _buildKonpozaiItems(KochuhyoData data, pw.TextStyle textStyle, pw.TextStyle boldStyle) {
       final List<pw.Widget> widgets = [];
-      const double localSectionSpacing = 0.5 * PdfPageFormat.mm;
+      // sectionSpacing は既に定義済み
 
       widgets.add(
         pw.Align(
@@ -382,14 +380,14 @@ class PrintPreviewScreen extends StatelessWidget {
           child: pw.RichText(
             text: pw.TextSpan(
               children: [
-                pw.TextSpan(text: 'ハリ: ', style: boldStyle.copyWith(fontWeight: pw.FontWeight.bold)),
-                pw.TextSpan(text: '${data.hariWidth} × ${data.hariThickness}・${data.hariQuantity}本', style: textStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                pw.TextSpan(text: 'ハリ: ', style: boldStyle),
+                pw.TextSpan(text: '${data.hariWidth} × ${data.hariThickness}・${data.hariQuantity}本', style: textStyle),
               ]
             )
           ),
         )
       );
-      widgets.add(pw.SizedBox(height: localSectionSpacing));
+      widgets.add(pw.SizedBox(height: sectionSpacing));
 
       widgets.add(
         pw.Align(
@@ -397,14 +395,14 @@ class PrintPreviewScreen extends StatelessWidget {
           child: pw.RichText(
             text: pw.TextSpan(
               children: [
-                pw.TextSpan(text: '押さえ材${data.pressingMaterialHasMolding ? " (盛材有)" : ""}: ', style: boldStyle.copyWith(fontWeight: pw.FontWeight.bold)),
-                pw.TextSpan(text: '${data.pressingMaterialLength} × ${data.pressingMaterialWidth} × ${data.pressingMaterialThickness}・${data.pressingMaterialQuantity}本', style: textStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                pw.TextSpan(text: '押さえ材${data.pressingMaterialHasMolding ? " (盛材有)" : ""}: ', style: boldStyle),
+                pw.TextSpan(text: '${data.pressingMaterialLength} × ${data.pressingMaterialWidth} × ${data.pressingMaterialThickness}・${data.pressingMaterialQuantity}本', style: textStyle),
               ]
             )
           ),
         )
       );
-      widgets.add(pw.SizedBox(height: localSectionSpacing));
+      widgets.add(pw.SizedBox(height: sectionSpacing));
 
       widgets.add(
         pw.Align(
@@ -412,21 +410,21 @@ class PrintPreviewScreen extends StatelessWidget {
           child: pw.RichText(
             text: pw.TextSpan(
               children: [
-                pw.TextSpan(text: 'トップ材: ', style: boldStyle.copyWith(fontWeight: pw.FontWeight.bold)),
-                pw.TextSpan(text: '${data.topMaterialLength} × ${data.topMaterialWidth} × ${data.topMaterialThickness}・${data.topMaterialQuantity}本', style: textStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                pw.TextSpan(text: 'トップ材: ', style: boldStyle),
+                pw.TextSpan(text: '${data.topMaterialLength} × ${data.topMaterialWidth} × ${data.topMaterialThickness}・${data.topMaterialQuantity}本', style: textStyle),
               ]
             )
           ),
         )
       );
-      widgets.add(pw.SizedBox(height: localSectionSpacing));
+      widgets.add(pw.SizedBox(height: sectionSpacing));
 
       return widgets;
     }
 
     List<pw.Widget> _buildGawaTsumaItems(KochuhyoData data, pw.TextStyle textStyle, pw.TextStyle boldStyle) {
       final List<pw.Widget> widgets = [];
-      const double localSectionSpacing = 0.5 * PdfPageFormat.mm;
+      // sectionSpacing は既に定義済み
 
       widgets.add(
         pw.Align(
@@ -441,7 +439,7 @@ class PrintPreviewScreen extends StatelessWidget {
           ),
         )
       );
-      widgets.add(pw.SizedBox(height: localSectionSpacing));
+      widgets.add(pw.SizedBox(height: sectionSpacing));
 
       widgets.add(
         pw.Row(
@@ -457,7 +455,7 @@ class PrintPreviewScreen extends StatelessWidget {
                 )
               ),
             ),
-            pw.SizedBox(width: localSectionSpacing * 2),
+            pw.SizedBox(width: sectionSpacing * 2),
             pw.Expanded(
               child: pw.RichText(
                 text: pw.TextSpan(
@@ -468,7 +466,7 @@ class PrintPreviewScreen extends StatelessWidget {
                 )
               ),
             ),
-            pw.SizedBox(width: localSectionSpacing * 2),
+            pw.SizedBox(width: sectionSpacing * 2),
             pw.Expanded(
               child: pw.RichText(
                 text: pw.TextSpan(
@@ -482,7 +480,7 @@ class PrintPreviewScreen extends StatelessWidget {
           ],
         )
       );
-      widgets.add(pw.SizedBox(height: localSectionSpacing));
+      widgets.add(pw.SizedBox(height: sectionSpacing));
 
       widgets.add(
         pw.Row(
@@ -498,7 +496,7 @@ class PrintPreviewScreen extends StatelessWidget {
                 )
               ),
             ),
-            pw.SizedBox(width: localSectionSpacing * 2),
+            pw.SizedBox(width: sectionSpacing * 2),
             pw.Expanded(
               child: pw.RichText(
                 text: pw.TextSpan(
@@ -512,14 +510,14 @@ class PrintPreviewScreen extends StatelessWidget {
           ],
         )
       );
-      widgets.add(pw.SizedBox(height: localSectionSpacing));
+      widgets.add(pw.SizedBox(height: sectionSpacing));
 
       return widgets;
     }
 
     List<pw.Widget> _buildTenjoItems(KochuhyoData data, pw.TextStyle textStyle, pw.TextStyle boldStyle) {
       final List<pw.Widget> widgets = [];
-      const double localSectionSpacing = 0.5 * PdfPageFormat.mm;
+      // sectionSpacing は既に定義済み
 
       widgets.add(
         pw.Row(
@@ -535,7 +533,7 @@ class PrintPreviewScreen extends StatelessWidget {
                 )
               ),
             ),
-            pw.SizedBox(width: localSectionSpacing * 2),
+            pw.SizedBox(width: sectionSpacing * 2),
             pw.Expanded(
               child: pw.RichText(
                 text: pw.TextSpan(
@@ -549,14 +547,14 @@ class PrintPreviewScreen extends StatelessWidget {
           ],
         )
       );
-      widgets.add(pw.SizedBox(height: localSectionSpacing));
+      widgets.add(pw.SizedBox(height: sectionSpacing));
 
       return widgets;
     }
 
     List<pw.Widget> _buildAdditionalPartsItems(KochuhyoData data, pw.TextStyle textStyle, pw.TextStyle boldStyle) {
       final List<pw.Widget> widgets = [];
-      const double localSectionSpacing = 0.5 * PdfPageFormat.mm;
+      // sectionSpacing は既に定義済み
       for (int i = 0; i < data.additionalParts.length; i++) {
         final part = data.additionalParts[i];
         if (part['name']!.isNotEmpty && (DimensionParser(part['dims']!).l.isNotEmpty || DimensionParser(part['dims']!).w.isNotEmpty || DimensionParser(part['dims']!).t.isNotEmpty || DimensionParser(part['dims']!).qty.isNotEmpty)) {
@@ -565,13 +563,13 @@ class PrintPreviewScreen extends StatelessWidget {
             pw.RichText( 
               text: pw.TextSpan(
                 children: [
-                  pw.TextSpan(text: '${part['name']!}: ', style: boldStyle.copyWith(fontWeight: pw.FontWeight.bold)),
-                  pw.TextSpan(text: '${parsedPart.l} × ${parsedPart.w} × ${parsedPart.t}・${parsedPart.qty}本', style: textStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                  pw.TextSpan(text: '${part['name']!}: ', style: boldStyle),
+                  pw.TextSpan(text: '${parsedPart.l} × ${parsedPart.w} × ${parsedPart.t}・${parsedPart.qty}本', style: textStyle),
                 ]
               )
             ),
           );
-          widgets.add(pw.SizedBox(height: localSectionSpacing));
+          widgets.add(pw.SizedBox(height: sectionSpacing));
         }
       }
       return widgets;
@@ -616,10 +614,10 @@ class PrintPreviewScreen extends StatelessWidget {
               alignment: pw.Alignment.topLeft,
               child: pw.Row(
                 children: [
-                   pw.Text('出荷日: ${data.shippingDate}', style: shippingDateTextStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                   pw.Text('出荷日: ${data.shippingDate}', style: shippingDateTextStyle),
                    if (data.shippingTime.isNotEmpty) ...[
                      pw.SizedBox(width: 10),
-                     pw.Text('時間指定: ${data.shippingTime}', style: shippingDateTextStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                     pw.Text('時間指定: ${data.shippingTime}', style: shippingDateTextStyle),
                    ]
                 ]
               )
@@ -629,12 +627,12 @@ class PrintPreviewScreen extends StatelessWidget {
               alignment: pw.Alignment.topRight,
               child: pw.Padding(
                 padding: pw.EdgeInsets.only(right: (PdfPageFormat.a4.width / 2 - (1.0 * PdfPageFormat.cm)) / 2 ),
-                child: pw.Text('発行日: ${data.issueDate}', style: issueDateTextStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                child: pw.Text('発行日: ${data.issueDate}', style: issueDateTextStyle),
               ),
             ),
             pw.Align(
               alignment: pw.Alignment.topRight,
-              child: pw.Text('整理番号: ${data.serialNumber}', style: serialNumberTextStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+              child: pw.Text('整理番号: ${data.serialNumber}', style: serialNumberTextStyle),
             )
           ]
         ),
@@ -653,7 +651,7 @@ class PrintPreviewScreen extends StatelessWidget {
               child: _buildBasicInfoItem('仕向先', data.shihomeisaki, labelWidth: 18 * PdfPageFormat.mm),
             ),
             pw.SizedBox(width: sectionSpacing * 2),
-            // ▼▼▼ 修正: 品名を自動縮小 (scaleDown: true) ▼▼▼
+            // ▼▼▼ 品名を自動縮小 (scaleDown: true) ▼▼▼
             pw.SizedBox(
               width: 4.5 * PdfPageFormat.cm,
               child: _buildBasicInfoItem('品名', data.hinmei, labelWidth: 15 * PdfPageFormat.mm, scaleDown: true),
@@ -687,12 +685,13 @@ class PrintPreviewScreen extends StatelessWidget {
                   children: [
                     dimensionsTable,
                     pw.SizedBox(height: sectionSpacing * 2),
+                    // ★★★ 図面エリアの高さを 3.4cm に戻す ★★★
                     _buildDrawing(data.koshitaImageBytes, '腰下図面なし', 3.4 * PdfPageFormat.cm),
-                    pw.Text('腰下・負荷床材・根止め', style: headerTextStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                    pw.Text('腰下・負荷床材・根止め', style: headerTextStyle),
                     pw.SizedBox(height: sectionSpacing),
                     ..._buildCombinedDimensionItems(data, commonContentTextStyle, commonContentBoldStyle),
                     pw.SizedBox(height: sectionSpacing * 2),
-                    pw.Text('梱包材', style: headerTextStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                    pw.Text('梱包材', style: headerTextStyle),
                     pw.SizedBox(height: sectionSpacing),
                     ..._buildKonpozaiItems(data, commonContentTextStyle, commonContentBoldStyle),
                   ]
@@ -701,7 +700,7 @@ class PrintPreviewScreen extends StatelessWidget {
               pw.SizedBox(width: sectionSpacing * 4),
               pw.Expanded( // 右列
                 child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start, // 右列全体を左寄せに
+                  crossAxisAlignment: pw.CrossAxisAlignment.start, // 左列全体を左寄せに
                   children: [
                     pw.Row(
                       children: [
@@ -717,16 +716,17 @@ class PrintPreviewScreen extends StatelessWidget {
                       ],
                     ),
                     pw.SizedBox(height: sectionSpacing * 2),
+                    // ★★★ 図面エリアの高さを 2.8cm に戻す ★★★
                     _buildDrawing(data.gawaTsumaImageBytes, '側・妻図面なし', 2.8 * PdfPageFormat.cm),
-                    pw.Text('側・妻', style: headerTextStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                    pw.Text('側・妻', style: headerTextStyle),
                     pw.SizedBox(height: sectionSpacing),
                     ..._buildGawaTsumaItems(data, commonContentTextStyle, commonContentBoldStyle),
                     pw.SizedBox(height: sectionSpacing * 2),
-                    pw.Text('天井', style: headerTextStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                    pw.Text('天井', style: headerTextStyle),
                     pw.SizedBox(height: sectionSpacing),
                     ..._buildTenjoItems(data, commonContentTextStyle, commonContentBoldStyle),
                     pw.SizedBox(height: sectionSpacing * 2),
-                    pw.Text('追加部材', style: headerTextStyle.copyWith(fontWeight: pw.FontWeight.bold)),
+                    pw.Text('追加部材', style: headerTextStyle),
                     pw.SizedBox(height: sectionSpacing),
                     ..._buildAdditionalPartsItems(data, commonContentTextStyle, commonContentBoldStyle),
                     pw.Expanded(child: pw.Container()), // 残りのスペースを埋める

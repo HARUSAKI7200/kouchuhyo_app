@@ -34,8 +34,10 @@ flutter:
   assets:
     - assets/koshita_base.jpg
     - assets/gawa_tsuma_base.jpg
-    - assets/fonts/BIZUDPGothic-Regular.ttf
-    - assets/fonts/BIZUDPGothic-Bold.ttf
+    - assets/fonts/NotoSerifJP-Regular.ttf
+    - assets/fonts/NotoSerifJP-Bold.ttf
+    - assets/fonts/NotoSansJP-Regular.ttf
+    - assets/fonts/NotoSansJP-Bold.ttf
 
   fonts:
    - family: BIZUDPGothic
